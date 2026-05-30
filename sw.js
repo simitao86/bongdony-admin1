@@ -1,4 +1,4 @@
-const CACHE_NAME = 'bongdony-v5';
+const CACHE_NAME = 'bongdony-v7';
 const ASSETS = ['./index.html', './style.css', './app.js', './manifest.json', './LOGO1.png'];
 
 self.addEventListener('install', event => {
@@ -17,6 +17,11 @@ self.addEventListener('activate', event => {
 
 self.addEventListener('fetch', event => {
   if (event.request.method !== 'GET') return;
+  const url = new URL(event.request.url);
+  if (url.origin !== self.location.origin) {
+    event.respondWith(fetch(event.request));
+    return;
+  }
   event.respondWith(
     caches.match(event.request).then(cached =>
       cached || fetch(event.request).catch(() => caches.match('./index.html'))

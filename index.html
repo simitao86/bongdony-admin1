@@ -136,8 +136,20 @@
     <div class="section-label">게시물 정보 입력</div>
     <div class="card">
       <div class="form-group">
-        <label>사진 분위기 / 상황</label>
-        <textarea id="sns-mood" rows="3" placeholder="예: 저녁 불빛 아래 삼겹살이 지글지글 구워지는 장면&#10;예: 4명이 즐겁게 식사하는 모습&#10;예: 오늘 신선하게 세팅된 고기 플레이팅"></textarea>
+        <label>사진 업로드 <span style="color:var(--gold-dark);font-weight:700;text-transform:none">★ 추천</span></label>
+        <input type="file" id="sns-photo" accept="image/*" style="display:none" onchange="handlePhotoSelect(event)">
+        <div class="photo-upload" id="photo-upload-zone" onclick="document.getElementById('sns-photo').click()">
+          <div id="photo-placeholder">
+            <div class="pu-icon">📷</div>
+            <div class="pu-text">고기 사진을 올려주세요</div>
+            <div class="pu-sub">AI가 사진을 보고 캡션을 만들어드려요</div>
+          </div>
+          <img id="photo-preview" class="photo-preview" alt="미리보기">
+        </div>
+      </div>
+      <div class="form-group">
+        <label>추가 설명 <span style="color:var(--text3);font-weight:400;text-transform:none">(선택)</span></label>
+        <textarea id="sns-mood" rows="2" placeholder="사진에 담지 못한 분위기나 강조하고 싶은 점을 적어주세요&#10;예: 가족 모임 / 회식 / 기념일 분위기"></textarea>
       </div>
       <div class="form-group" style="margin-bottom:0">
         <label>메뉴 <span style="color:var(--text3);font-weight:400;text-transform:none">(선택)</span></label>

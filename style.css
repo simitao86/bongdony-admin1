@@ -286,6 +286,39 @@ select {
   background-repeat:no-repeat; background-position:right 14px center;
 }
 
+/* ── PHOTO UPLOAD ── */
+.photo-upload {
+  position: relative;
+  width: 100%;
+  min-height: 160px;
+  border: 2px dashed var(--border2);
+  border-radius: var(--radius-sm);
+  background: var(--cream2);
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer; overflow: hidden;
+  transition: border-color .2s, background .2s;
+}
+.photo-upload:active { border-color: var(--gold); background: var(--gold4); }
+.photo-upload.has-image { border-style: solid; border-color: var(--border2); padding: 0; min-height: auto; }
+#photo-placeholder { text-align: center; padding: 28px 16px; }
+.pu-icon { font-size: 40px; margin-bottom: 10px; }
+.pu-text { font-size: 14px; font-weight: 800; color: var(--text2); }
+.pu-sub { font-size: 11px; color: var(--text3); margin-top: 4px; font-weight: 500; }
+.photo-preview {
+  display: none;
+  width: 100%; max-height: 320px;
+  object-fit: cover; border-radius: 10px;
+}
+.photo-upload.has-image .photo-preview { display: block; }
+.photo-upload.has-image #photo-placeholder { display: none; }
+.photo-badge {
+  position: absolute; top: 10px; right: 10px;
+  background: rgba(18,14,7,.78); color: var(--gold2);
+  font-size: 11px; font-weight: 700;
+  padding: 5px 12px; border-radius: 20px;
+  backdrop-filter: blur(4px);
+}
+
 /* ── STARS ── */
 .star-row { display:flex; gap:5px; }
 .star { font-size:28px; cursor:pointer; filter:grayscale(1) brightness(.7); transition:filter .15s, transform .1s; background:none; border:0; line-height:1; }

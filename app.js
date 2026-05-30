@@ -4,6 +4,7 @@ const CONFIG = {
   webhookUrl: 'https://hook.us2.make.com/6grcqyb621wgpobywyktd0fe0g3q1lmr',
   restaurantName: '봉도니',
   instagramId: 'bongdony_jeju',
+  reservationRefreshMs: 30000,
 };
 
 // ── STATE ─────────────────────────────────────────────────
@@ -14,6 +15,9 @@ let state = {
   filteredDate: 'today',
   apiKey: localStorage.getItem('claude_api_key') || '',
   aiLoading: false,
+  snsPhoto: null, // { media_type, data }
+  reservationsLoading: false,
+  lastReservationLoadAt: null,
 };
 
 let addReviewStars = 5;
@@ -31,6 +35,7 @@ document.addEventListener('DOMContentLoaded', () => {
   setInterval(updateOpenStatus, 60000); // 매 분마다 영업상태 갱신
   updateReviewCount();
   loadReservations();
+  startReservationAutoRefresh();
 });
 
 // ── CLOCK ─────────────────────────────────────────────────
@@ -78,10 +83,20 @@ function switchTab(tab) {
   if (tab === 'home') renderHome();
 }
 
+function startReservationAutoRefresh() {
+  setInterval(() => {
+    if (!document.hidden) loadReservations({ silent: true });
+  }, CONFIG.reservationRefreshMs);
+
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden) loadReservations({ silent: true });
+  });
+}
+
 // ── HOME ──────────────────────────────────────────────────
 function renderHome() {
   const today = formatDate(new Date(), 'YYYY-MM-DD');
-  const todayRes = state.reservations.filter(r => r.date === today);
+  const todayRes = state.reservations.filter(r => r.dateKey === today);
   const el = document.getElementById('home-today-count');
   const totalEl = document.getElementById('home-total');
   if (el) el.textContent = todayRes.length;
@@ -119,11 +134,10 @@ function renderNextReservation(todayRes) {
 
   const now = new Date();
   const upcoming = todayRes
-    .filter(r => r.time && /^\d{1,2}:\d{2}$/.test(r.time.trim()))
+    .filter(r => Number.isFinite(r.timeMinutes))
     .map(r => {
-      const [h, m] = r.time.trim().split(':').map(Number);
       const resTime = new Date();
-      resTime.setHours(h, m, 0, 0);
+      resTime.setHours(Math.floor(r.timeMinutes / 60), r.timeMinutes % 60, 0, 0);
       return { ...r, resTime, diff: resTime - now };
     })
     .filter(r => r.diff > 0)
@@ -211,27 +225,70 @@ function clearReviewForm() {
 }
 
 // ── SNS ───────────────────────────────────────────────────
+// 사진 선택 → 리사이즈 → 미리보기 + base64 저장
+function handlePhotoSelect(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+  if (!file.type.startsWith('image/')) { toast('이미지 파일만 업로드할 수 있습니다'); return; }
+
+  const reader = new FileReader();
+  reader.onload = e => {
+    const img = new Image();
+    img.onload = () => {
+      // 큰 사진은 1280px로 축소 (API 비용·속도 최적화)
+      const maxSize = 1280;
+      let { width, height } = img;
+      if (width > height && width > maxSize) {
+        height = Math.round(height * maxSize / width); width = maxSize;
+      } else if (height >= width && height > maxSize) {
+        width = Math.round(width * maxSize / height); height = maxSize;
+      }
+      const canvas = document.createElement('canvas');
+      canvas.width = width; canvas.height = height;
+      canvas.getContext('2d').drawImage(img, 0, 0, width, height);
+      const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
+
+      // 미리보기 표시
+      const zone = document.getElementById('photo-upload-zone');
+      const preview = document.getElementById('photo-preview');
+      preview.src = dataUrl;
+      zone.classList.add('has-image');
+      if (!zone.querySelector('.photo-badge')) {
+        const badge = document.createElement('div');
+        badge.className = 'photo-badge';
+        badge.textContent = '📷 사진 변경';
+        zone.appendChild(badge);
+      }
+
+      // base64 데이터만 추출해 저장
+      state.snsPhoto = { media_type: 'image/jpeg', data: dataUrl.split(',')[1] };
+    };
+    img.src = e.target.result;
+  };
+  reader.readAsDataURL(file);
+}
+
 async function generateCaptions() {
   if (state.aiLoading) { toast('생성 중입니다. 잠시 기다려주세요'); return; }
   if (!state.apiKey) { openSettings(); toast('API 키를 먼저 설정해주세요'); return; }
   const mood = document.getElementById('sns-mood').value.trim();
   const menu = document.getElementById('sns-menu').value.trim();
-  if (!mood) { toast('사진 분위기를 입력해주세요'); return; }
+  if (!state.snsPhoto && !mood) { toast('사진을 올리거나 설명을 입력해주세요'); return; }
 
   const resultsEl = document.getElementById('sns-results');
   resultsEl.innerHTML = '<div class="loading"><div class="spinner"></div>AI가 캡션을 생성하고 있습니다...</div>';
   state.aiLoading = true;
 
   const prompt = `당신은 제주도 삼겹살 맛집 "${CONFIG.restaurantName}"의 인스타그램 마케터입니다.
-인스타그램 게시물 캡션 3가지를 작성해주세요.
-사진 분위기: ${mood}${menu ? `\n메뉴: ${menu}` : ''}
+${state.snsPhoto ? '첨부된 사진을 자세히 보고, 사진 속 음식·분위기·색감·장면을 살려서 ' : ''}인스타그램 게시물 캡션 3가지를 작성해주세요.
+${mood ? `추가 설명: ${mood}` : ''}${menu ? `\n메뉴: ${menu}` : ''}
 인스타 계정: @${CONFIG.instagramId} / 위치: 제주시 번영로 589
-요구사항: 2~4줄 + 해시태그 10~15개. 제주 감성 강조.
+요구사항: 2~4줄 + 해시태그 10~15개. 제주 감성과 봉도니 브랜드 강조.
 1번: 감성적 시적 / 2번: 정보 중심 / 3번: 친근하고 재미있는 톤
 형식: "1. [캡션]\n\n[해시태그]" 3개`;
 
   try {
-    const res = await claudeAPI(prompt);
+    const res = await claudeAPI(prompt, state.snsPhoto);
     const items = parseNumberedList(res);
     if (!items.length) throw new Error('캡션 생성에 실패했습니다. 다시 시도해주세요.');
     resultsEl.innerHTML = items.slice(0, 3).map((text, i) => `
@@ -253,13 +310,22 @@ function clearSNSForm() {
   document.getElementById('sns-mood').value = '';
   document.getElementById('sns-menu').value = '';
   document.getElementById('sns-results').innerHTML = '';
+  document.getElementById('sns-photo').value = '';
+  state.snsPhoto = null;
+  const zone = document.getElementById('photo-upload-zone');
+  zone.classList.remove('has-image');
+  const badge = zone.querySelector('.photo-badge');
+  if (badge) badge.remove();
+  document.getElementById('photo-preview').src = '';
 }
 
 // ── RESERVATIONS ──────────────────────────────────────────
 async function loadReservations() {
+  if (state.reservationsLoading) return;
+  state.reservationsLoading = true;
   try {
-    const url = `https://docs.google.com/spreadsheets/d/${CONFIG.sheetId}/export?format=csv&gid=0`;
-    const res = await fetch(url);
+    const url = `https://docs.google.com/spreadsheets/d/${CONFIG.sheetId}/export?format=csv&gid=0&cacheBust=${Date.now()}`;
+    const res = await fetch(url, { cache: 'no-store' });
     if (!res.ok) throw new Error(`시트 로드 오류 (${res.status})`);
     const csv = await res.text();
 
@@ -270,7 +336,9 @@ async function loadReservations() {
       return {
         id:      cols[0] || '',
         date:    (cols[1] || '').trim(),
+        dateKey: normalizeReservationDate(cols[1] || ''),
         time:    (cols[2] || '').trim(),
+        timeMinutes: parseReservationTime(cols[2] || ''),
         name:    (cols[3] || '').trim(),
         phone:   (cols[4] || '').trim(),
         people:  (cols[5] || '').trim(),
@@ -280,11 +348,15 @@ async function loadReservations() {
       };
     }).filter(r => r.name);
 
+    state.lastReservationLoadAt = new Date();
     renderHome();
     renderCRM();
+    if (state.currentTab === 'reservations') renderReservations();
     updateReviewCount();
   } catch (e) {
     console.warn('시트 로드 실패:', e.message);
+  } finally {
+    state.reservationsLoading = false;
   }
 }
 
@@ -296,10 +368,13 @@ function renderReservations() {
   const weekLater = formatDate(new Date(Date.now() + 7 * 86400000), 'YYYY-MM-DD');
 
   let filtered = [...state.reservations];
-  if (state.filteredDate === 'today') filtered = filtered.filter(r => r.date === today);
-  else if (state.filteredDate === 'tomorrow') filtered = filtered.filter(r => r.date === tomorrow);
-  else if (state.filteredDate === 'week') filtered = filtered.filter(r => r.date >= today && r.date <= weekLater);
-  filtered.sort((a, b) => (a.date + a.time).localeCompare(b.date + b.time));
+  if (state.filteredDate === 'today') filtered = filtered.filter(r => r.dateKey === today);
+  else if (state.filteredDate === 'tomorrow') filtered = filtered.filter(r => r.dateKey === tomorrow);
+  else if (state.filteredDate === 'week') filtered = filtered.filter(r => r.dateKey >= today && r.dateKey <= weekLater);
+  filtered.sort((a, b) =>
+    (a.dateKey || a.date).localeCompare(b.dateKey || b.date) ||
+    (a.timeMinutes ?? 9999) - (b.timeMinutes ?? 9999)
+  );
 
   if (!filtered.length) {
     listEl.innerHTML = '<div class="empty"><div class="ei">📋</div>예약이 없습니다<br>카카오톡으로 예약을 받아보세요</div>';
@@ -511,9 +586,18 @@ function saveSettings() {
 }
 
 // ── CLAUDE API ────────────────────────────────────────────
-async function claudeAPI(prompt) {
+// image: { media_type, data } 가 있으면 사진까지 함께 분석 (Vision)
+async function claudeAPI(prompt, image) {
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 30000); // 30초 타임아웃
+  const timeout = setTimeout(() => controller.abort(), 45000); // 45초 (사진 분석은 더 오래 걸림)
+
+  const content = image
+    ? [
+        { type: 'image', source: { type: 'base64', media_type: image.media_type, data: image.data } },
+        { type: 'text', text: prompt },
+      ]
+    : prompt;
+
   try {
     const res = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
@@ -526,7 +610,7 @@ async function claudeAPI(prompt) {
       body: JSON.stringify({
         model: 'claude-sonnet-4-6',
         max_tokens: 1500,
-        messages: [{ role: 'user', content: prompt }],
+        messages: [{ role: 'user', content }],
       }),
       signal: controller.signal,
     });
@@ -561,6 +645,64 @@ function toast(msg) {
   el.classList.add('show');
   clearTimeout(el._t);
   el._t = setTimeout(() => el.classList.remove('show'), 2200);
+}
+
+function normalizeReservationDate(value) {
+  const raw = String(value || '').trim();
+  if (!raw) return '';
+
+  const today = new Date();
+  const lowered = raw.replace(/\s+/g, '');
+  if (lowered === '오늘') return formatDate(today, 'YYYY-MM-DD');
+  if (lowered === '내일') return formatDate(new Date(today.getTime() + 86400000), 'YYYY-MM-DD');
+
+  let match = raw.match(/(20\d{2})[-./년\s]+(\d{1,2})[-./월\s]+(\d{1,2})/);
+  if (match) return toDateKey(Number(match[1]), Number(match[2]), Number(match[3]));
+
+  match = raw.match(/(\d{1,2})\s*월\s*(\d{1,2})\s*일?/);
+  if (match) {
+    const month = Number(match[1]);
+    const day = Number(match[2]);
+    const year = inferReservationYear(month, day);
+    return toDateKey(year, month, day);
+  }
+
+  return raw;
+}
+
+function inferReservationYear(month, day) {
+  const now = new Date();
+  const candidate = new Date(now.getFullYear(), month - 1, day);
+  const thirtyDaysAgo = new Date(now.getTime() - 30 * 86400000);
+  return candidate < thirtyDaysAgo ? now.getFullYear() + 1 : now.getFullYear();
+}
+
+function toDateKey(year, month, day) {
+  return [
+    year,
+    String(month).padStart(2, '0'),
+    String(day).padStart(2, '0'),
+  ].join('-');
+}
+
+function parseReservationTime(value) {
+  const raw = String(value || '').trim();
+  if (!raw) return null;
+
+  let match = raw.match(/(\d{1,2})\s*[:시]\s*(\d{1,2})?/);
+  if (!match) return null;
+
+  let hour = Number(match[1]);
+  const minute = Number(match[2] || 0);
+  const normalized = raw.replace(/\s+/g, '');
+  const isPm = /(오후|저녁|밤)/.test(normalized);
+  const isAm = /(오전|아침|새벽)/.test(normalized);
+
+  if (isPm && hour < 12) hour += 12;
+  if (isAm && hour === 12) hour = 0;
+  if (hour > 23 || minute > 59) return null;
+
+  return hour * 60 + minute;
 }
 
 function formatDate(date, fmt) {
