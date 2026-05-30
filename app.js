@@ -334,15 +334,16 @@ async function loadReservations() {
     const rows = csv.replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n').slice(1).filter(r => r.trim());
     state.reservations = rows.map(row => {
       const cols = parseCSVRow(row);
+      const contact = normalizeReservationContact(cols[3], cols[4], cols[5]);
       return {
         id:      cols[0] || '',
         date:    (cols[1] || '').trim(),
         dateKey: normalizeReservationDate(cols[1] || ''),
         time:    (cols[2] || '').trim(),
         timeMinutes: parseReservationTime(cols[2] || ''),
-        name:    (cols[3] || '').trim(),
-        phone:   (cols[4] || '').trim(),
-        people:  (cols[5] || '').trim(),
+        name:    contact.name,
+        phone:   contact.phone,
+        people:  contact.people,
         request: (cols[6] || '').trim(),
         status:  (cols[7] || '예약완료').trim(),
         channel: (cols[8] || '').trim(),
@@ -716,6 +717,39 @@ function parseReservationTime(value) {
   if (hour > 23 || minute > 59) return null;
 
   return hour * 60 + minute;
+}
+
+function normalizeReservationContact(nameCell, phoneCell, peopleCell) {
+  const values = [nameCell, phoneCell, peopleCell].map(v => String(v || '').trim());
+  const phone = values.find(isLikelyPhone) || values[1] || '';
+  const people = values.find(isLikelyPeople) || values[2] || '';
+  const name = values.find(v => v && v !== phone && v !== people) || values[0] || '';
+
+  return {
+    name,
+    phone,
+    people: normalizePeopleText(people),
+  };
+}
+
+function isLikelyPhone(value) {
+  const raw = String(value || '').trim();
+  const digits = raw.replace(/\D/g, '');
+  return digits.length >= 6 && /^[\d\s\-().+]+$/.test(raw);
+}
+
+function isLikelyPeople(value) {
+  const raw = String(value || '').trim();
+  const match = raw.match(/^(\d{1,2})\s*명?$/);
+  if (!match) return false;
+  const count = Number(match[1]);
+  return count >= 1 && count <= 30;
+}
+
+function normalizePeopleText(value) {
+  const raw = String(value || '').trim();
+  const match = raw.match(/^(\d{1,2})\s*명?$/);
+  return match ? `${Number(match[1])}명` : raw;
 }
 
 function formatDate(date, fmt) {
