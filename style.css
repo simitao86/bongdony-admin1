@@ -33,6 +33,9 @@ html, body {
   background: var(--dark);
   color: var(--text);
   overflow: hidden;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
 }
 
 /* ── SVG 필터 (골드 로고용) ── */
@@ -103,6 +106,7 @@ html, body {
   transition: opacity .22s ease, transform .22s ease;
   -webkit-overflow-scrolling: touch;
   background: var(--cream);
+  will-change: transform, opacity;
 }
 .page.active { opacity:1; pointer-events:all; transform:translateY(0); }
 
@@ -119,6 +123,7 @@ html, body {
   display: flex;
   box-shadow: 0 -4px 20px rgba(0,0,0,0.06);
   padding-bottom: env(safe-area-inset-bottom,0px);
+  will-change: transform;
 }
 .tab-item {
   flex:1; display:flex; flex-direction:column;
@@ -253,7 +258,7 @@ html, body {
 .page-inner { padding: 0 16px; }
 .card {
   background:var(--white); border:1px solid var(--border);
-  border-radius:var(--radius); padding:18px; margin-bottom:12px;
+  border-radius:var(--radius); padding:18px; margin:0 16px 12px;
 }
 .card-title {
   font-size:10px; font-weight:800; color:var(--text3);

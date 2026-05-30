@@ -13,6 +13,7 @@ let state = {
   reservations: [],
   filteredDate: 'today',
   apiKey: localStorage.getItem('claude_api_key') || '',
+  aiLoading: false,
 };
 
 let addReviewStars = 5;
@@ -27,10 +28,9 @@ document.addEventListener('DOMContentLoaded', () => {
   updateClock();
   setInterval(updateClock, 1000);
   updateOpenStatus();
+  setInterval(updateOpenStatus, 60000); // 매 분마다 영업상태 갱신
   updateReviewCount();
   loadReservations();
-  renderHome();
-  renderCRM();
 });
 
 // ── CLOCK ─────────────────────────────────────────────────
@@ -99,10 +99,10 @@ function renderHome() {
   listEl.innerHTML = recent.map(r => `
     <div class="res-item">
       <div class="res-header">
-        <span class="res-name">${r.name}</span>
-        <span class="res-badge complete">${r.status || '예약완료'}</span>
+        <span class="res-name">${escapeHtml(r.name)}</span>
+        <span class="res-badge complete">${escapeHtml(r.status || '예약완료')}</span>
       </div>
-      <div class="res-detail">🕐 ${r.time} &nbsp;·&nbsp; 👥 ${r.people}명 &nbsp;·&nbsp; 📞 ${r.phone}</div>
+      <div class="res-detail">🕐 ${escapeHtml(r.time)} &nbsp;·&nbsp; 👥 ${escapeHtml(r.people)}명 &nbsp;·&nbsp; 📞 ${escapeHtml(r.phone)}</div>
     </div>
   `).join('');
 }
@@ -110,11 +110,18 @@ function renderHome() {
 function renderNextReservation(todayRes) {
   const bannerEl = document.getElementById('home-next-res');
   if (!bannerEl) return;
+
+  // 타이머 정리
+  if (window._nextResTimer) {
+    clearInterval(window._nextResTimer);
+    window._nextResTimer = null;
+  }
+
   const now = new Date();
   const upcoming = todayRes
-    .filter(r => r.time)
+    .filter(r => r.time && /^\d{1,2}:\d{2}$/.test(r.time.trim()))
     .map(r => {
-      const [h, m] = r.time.split(':').map(Number);
+      const [h, m] = r.time.trim().split(':').map(Number);
       const resTime = new Date();
       resTime.setHours(h, m, 0, 0);
       return { ...r, resTime, diff: resTime - now };
@@ -134,16 +141,15 @@ function renderNextReservation(todayRes) {
     <div class="next-res-card">
       <div class="next-res-label">NEXT RESERVATION</div>
       <div class="next-res-main">
-        <span class="next-res-name">${next.name}</span>
+        <span class="next-res-name">${escapeHtml(next.name)}</span>
         <span class="next-res-countdown">${timeLeft}</span>
       </div>
       <div class="next-res-footer">
-        <span class="next-res-time">🕐 ${next.time}</span>
-        <span class="next-res-people">👥 ${next.people}명</span>
+        <span class="next-res-time">🕐 ${escapeHtml(next.time)}</span>
+        <span class="next-res-people">👥 ${escapeHtml(next.people)}명</span>
       </div>
     </div>`;
 
-  clearInterval(window._nextResTimer);
   window._nextResTimer = setInterval(() => renderNextReservation(todayRes), 60000);
 }
 
@@ -160,6 +166,7 @@ function initStars() {
 }
 
 async function generateReviews() {
+  if (state.aiLoading) { toast('생성 중입니다. 잠시 기다려주세요'); return; }
   if (!state.apiKey) { openSettings(); toast('API 키를 먼저 설정해주세요'); return; }
   const review = document.getElementById('review-text').value.trim();
   if (!review) { toast('리뷰 내용을 입력해주세요'); return; }
@@ -167,6 +174,7 @@ async function generateReviews() {
 
   const resultsEl = document.getElementById('review-results');
   resultsEl.innerHTML = '<div class="loading"><div class="spinner"></div>AI가 답글을 생성하고 있습니다...</div>';
+  state.aiLoading = true;
 
   const prompt = `당신은 제주도 삼겹살 맛집 "${CONFIG.restaurantName}" 사장님입니다.
 아래 손님 리뷰에 대한 답글을 3가지 다른 톤으로 작성해주세요.
@@ -178,21 +186,20 @@ async function generateReviews() {
 
   try {
     const res = await claudeAPI(prompt);
-    const lines = res.split(/\n+/).filter(l => /^[123]\./.test(l.trim()));
-    if (lines.length < 3) throw new Error('생성 실패');
-    resultsEl.innerHTML = lines.map((line, i) => {
-      const text = line.replace(/^[123]\.\s*/, '');
-      return `
-        <div class="ai-result-item">
-          <div class="ai-result-header">
-            <div class="result-num">답글 ${i + 1}</div>
-            <button class="copy-btn" onclick="copyText(this, \`${text.replace(/`/g,'\\`')}\`)">복사</button>
-          </div>
-          <div class="result-text">${text}</div>
-        </div>`;
-    }).join('');
+    const items = parseNumberedList(res);
+    if (!items.length) throw new Error('답글 생성에 실패했습니다. 다시 시도해주세요.');
+    resultsEl.innerHTML = items.slice(0, 3).map((text, i) => `
+      <div class="ai-result-item">
+        <div class="ai-result-header">
+          <div class="result-num">답글 ${i + 1}</div>
+          <button class="copy-btn" onclick="copyText(this, \`${text.replace(/`/g,'\\`').replace(/\$/g,'\\$')}\`)">복사</button>
+        </div>
+        <div class="result-text">${escapeHtml(text)}</div>
+      </div>`).join('');
   } catch (e) {
-    resultsEl.innerHTML = `<div class="empty"><div class="ei">⚠️</div>${e.message || 'API 오류'}</div>`;
+    resultsEl.innerHTML = `<div class="empty"><div class="ei">⚠️</div>${escapeHtml(e.message || 'API 오류가 발생했습니다')}</div>`;
+  } finally {
+    state.aiLoading = false;
   }
 }
 
@@ -205,6 +212,7 @@ function clearReviewForm() {
 
 // ── SNS ───────────────────────────────────────────────────
 async function generateCaptions() {
+  if (state.aiLoading) { toast('생성 중입니다. 잠시 기다려주세요'); return; }
   if (!state.apiKey) { openSettings(); toast('API 키를 먼저 설정해주세요'); return; }
   const mood = document.getElementById('sns-mood').value.trim();
   const menu = document.getElementById('sns-menu').value.trim();
@@ -212,6 +220,7 @@ async function generateCaptions() {
 
   const resultsEl = document.getElementById('sns-results');
   resultsEl.innerHTML = '<div class="loading"><div class="spinner"></div>AI가 캡션을 생성하고 있습니다...</div>';
+  state.aiLoading = true;
 
   const prompt = `당신은 제주도 삼겹살 맛집 "${CONFIG.restaurantName}"의 인스타그램 마케터입니다.
 인스타그램 게시물 캡션 3가지를 작성해주세요.
@@ -223,21 +232,20 @@ async function generateCaptions() {
 
   try {
     const res = await claudeAPI(prompt);
-    const parts = res.split(/\n(?=[123]\.)/).filter(p => /^[123]\./.test(p.trim()));
-    if (!parts.length) throw new Error('생성 실패');
-    resultsEl.innerHTML = parts.slice(0,3).map((part, i) => {
-      const text = part.replace(/^[123]\.\s*/,'').trim();
-      return `
-        <div class="ai-result-item">
-          <div class="ai-result-header">
-            <div class="result-num">캡션 ${i + 1}</div>
-            <button class="copy-btn" onclick="copyText(this, \`${text.replace(/`/g,'\\`')}\`)">복사</button>
-          </div>
-          <div class="result-text" style="white-space:pre-wrap">${text}</div>
-        </div>`;
-    }).join('');
+    const items = parseNumberedList(res);
+    if (!items.length) throw new Error('캡션 생성에 실패했습니다. 다시 시도해주세요.');
+    resultsEl.innerHTML = items.slice(0, 3).map((text, i) => `
+      <div class="ai-result-item">
+        <div class="ai-result-header">
+          <div class="result-num">캡션 ${i + 1}</div>
+          <button class="copy-btn" onclick="copyText(this, \`${text.replace(/`/g,'\\`').replace(/\$/g,'\\$')}\`)">복사</button>
+        </div>
+        <div class="result-text" style="white-space:pre-wrap">${escapeHtml(text)}</div>
+      </div>`).join('');
   } catch (e) {
-    resultsEl.innerHTML = `<div class="empty"><div class="ei">⚠️</div>${e.message || 'API 오류'}</div>`;
+    resultsEl.innerHTML = `<div class="empty"><div class="ei">⚠️</div>${escapeHtml(e.message || 'API 오류가 발생했습니다')}</div>`;
+  } finally {
+    state.aiLoading = false;
   }
 }
 
@@ -252,18 +260,29 @@ async function loadReservations() {
   try {
     const url = `https://docs.google.com/spreadsheets/d/${CONFIG.sheetId}/export?format=csv&gid=0`;
     const res = await fetch(url);
+    if (!res.ok) throw new Error(`시트 로드 오류 (${res.status})`);
     const csv = await res.text();
-    const rows = csv.split('\n').slice(1).filter(r => r.trim());
+
+    // \r\n (Windows) 및 \r (Mac) 줄바꿈 모두 처리
+    const rows = csv.replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n').slice(1).filter(r => r.trim());
     state.reservations = rows.map(row => {
       const cols = parseCSVRow(row);
       return {
-        id: cols[0]||'', date: cols[1]||'', time: cols[2]||'',
-        name: cols[3]||'', phone: cols[4]||'', people: cols[5]||'',
-        request: cols[6]||'', status: cols[7]||'예약완료', channel: cols[8]||'',
+        id:      cols[0] || '',
+        date:    (cols[1] || '').trim(),
+        time:    (cols[2] || '').trim(),
+        name:    (cols[3] || '').trim(),
+        phone:   (cols[4] || '').trim(),
+        people:  (cols[5] || '').trim(),
+        request: (cols[6] || '').trim(),
+        status:  (cols[7] || '예약완료').trim(),
+        channel: (cols[8] || '').trim(),
       };
     }).filter(r => r.name);
+
     renderHome();
     renderCRM();
+    updateReviewCount();
   } catch (e) {
     console.warn('시트 로드 실패:', e.message);
   }
@@ -273,32 +292,34 @@ function renderReservations() {
   const listEl = document.getElementById('res-list');
   if (!listEl) return;
   const today = formatDate(new Date(), 'YYYY-MM-DD');
-  const tomorrow = formatDate(new Date(Date.now()+86400000), 'YYYY-MM-DD');
-  const weekLater = formatDate(new Date(Date.now()+7*86400000), 'YYYY-MM-DD');
+  const tomorrow = formatDate(new Date(Date.now() + 86400000), 'YYYY-MM-DD');
+  const weekLater = formatDate(new Date(Date.now() + 7 * 86400000), 'YYYY-MM-DD');
 
-  let filtered = state.reservations;
+  let filtered = [...state.reservations];
   if (state.filteredDate === 'today') filtered = filtered.filter(r => r.date === today);
   else if (state.filteredDate === 'tomorrow') filtered = filtered.filter(r => r.date === tomorrow);
   else if (state.filteredDate === 'week') filtered = filtered.filter(r => r.date >= today && r.date <= weekLater);
-  filtered = [...filtered].sort((a,b) => (a.date+a.time).localeCompare(b.date+b.time));
+  filtered.sort((a, b) => (a.date + a.time).localeCompare(b.date + b.time));
 
   if (!filtered.length) {
     listEl.innerHTML = '<div class="empty"><div class="ei">📋</div>예약이 없습니다<br>카카오톡으로 예약을 받아보세요</div>';
     return;
   }
-  listEl.innerHTML = filtered.map(r => `
+  listEl.innerHTML = filtered.map(r => {
+    const statusCls = r.status === '방문완료' ? 'visited' : r.status === '취소' ? 'cancel' : 'complete';
+    return `
     <div class="res-item">
       <div class="res-header">
-        <span class="res-name">${r.name}</span>
-        <span class="res-badge ${r.status==='방문완료'?'visited':r.status==='취소'?'cancel':'complete'}">${r.status}</span>
+        <span class="res-name">${escapeHtml(r.name)}</span>
+        <span class="res-badge ${statusCls}">${escapeHtml(r.status)}</span>
       </div>
       <div class="res-detail">
-        📅 ${r.date} &nbsp;·&nbsp; 🕐 ${r.time}<br>
-        👥 ${r.people}명 &nbsp;·&nbsp; 📞 ${r.phone}
-        ${r.request&&r.request!=='없음'?`<br>📝 ${r.request}`:''}
+        📅 ${escapeHtml(r.date)} &nbsp;·&nbsp; 🕐 ${escapeHtml(r.time)}<br>
+        👥 ${escapeHtml(r.people)}명 &nbsp;·&nbsp; 📞 ${escapeHtml(r.phone)}
+        ${r.request && r.request !== '없음' ? `<br>📝 ${escapeHtml(r.request)}` : ''}
       </div>
-    </div>
-  `).join('');
+    </div>`;
+  }).join('');
 }
 
 function setDateFilter(filter) {
@@ -309,41 +330,48 @@ function setDateFilter(filter) {
   renderReservations();
 }
 
-function refreshReservations() {
+async function refreshReservations() {
   toast('새로고침 중...');
-  loadReservations().then(() => { renderReservations(); toast('✅ 새로고침 완료'); });
+  await loadReservations();
+  renderReservations();
+  toast('✅ 새로고침 완료');
 }
 
 // ── CRM ───────────────────────────────────────────────────
 function renderCRM() {
   const el = document.getElementById('crm-list');
   if (!el) return;
+
   const customerMap = {};
   state.reservations.forEach(r => {
     if (!r.phone) return;
-    if (!customerMap[r.phone]) customerMap[r.phone] = { name:r.name, phone:r.phone, visits:0, lastDate:'' };
+    if (!customerMap[r.phone]) {
+      customerMap[r.phone] = { name: r.name, phone: r.phone, visits: 0, lastDate: '' };
+    }
     customerMap[r.phone].visits++;
     if (r.date > customerMap[r.phone].lastDate) customerMap[r.phone].lastDate = r.date;
   });
 
-  const customers = Object.values(customerMap).sort((a,b) => b.visits - a.visits);
+  const customers = Object.values(customerMap).sort((a, b) => b.visits - a.visits);
   if (!customers.length) {
     el.innerHTML = '<div class="empty"><div class="ei">👥</div>예약 데이터가 없습니다</div>';
     return;
   }
   const today = new Date();
   el.innerHTML = customers.map(c => {
-    const grade = c.visits >= 5 ? {cls:'grade-vip',label:'VIP ⭐'}
-      : c.visits >= 3 ? {cls:'grade-regular',label:'단골'}
-      : {cls:'grade-new',label:'신규'};
-    const lastDays = c.lastDate ? Math.floor((today-new Date(c.lastDate))/86400000) : 999;
+    const grade = c.visits >= 5
+      ? { cls: 'grade-vip', label: 'VIP ⭐' }
+      : c.visits >= 3
+        ? { cls: 'grade-regular', label: '단골' }
+        : { cls: 'grade-new', label: '신규' };
+    const lastDays = c.lastDate ? Math.floor((today - new Date(c.lastDate)) / 86400000) : 999;
     const alert = lastDays > 30 ? ' ⚠️' : '';
     return `
       <div class="crm-item">
-        <div class="crm-avatar">${c.visits>=5?'⭐':c.visits>=3?'🍖':'👤'}</div>
+        <div class="crm-avatar">${c.visits >= 5 ? '⭐' : c.visits >= 3 ? '🍖' : '👤'}</div>
         <div class="crm-info">
-          <div class="crm-name">${c.name}${alert}</div>
-          <div class="crm-sub">방문 ${c.visits}회 · 최근 ${c.lastDate||'없음'}</div>
+          <div class="crm-name">${escapeHtml(c.name)}${alert}</div>
+          <div class="crm-sub">방문 ${c.visits}회 · 최근 ${c.lastDate || '없음'}</div>
         </div>
         <span class="crm-grade ${grade.cls}">${grade.label}</span>
       </div>`;
@@ -351,11 +379,16 @@ function renderCRM() {
 }
 
 // ── REVIEW LOG ────────────────────────────────────────────
-function getReviewLogs() { return JSON.parse(localStorage.getItem('review_logs')||'[]'); }
-function saveReviewLogs(logs) { localStorage.setItem('review_logs', JSON.stringify(logs)); }
+function getReviewLogs() {
+  try { return JSON.parse(localStorage.getItem('review_logs') || '[]'); }
+  catch { return []; }
+}
+function saveReviewLogs(logs) {
+  try { localStorage.setItem('review_logs', JSON.stringify(logs)); } catch {}
+}
 
 function updateReviewCount() {
-  const cutoff = Date.now() - 3*86400000;
+  const cutoff = Date.now() - 3 * 86400000;
   const count = getReviewLogs().filter(r => r.ts >= cutoff).length;
   const el = document.getElementById('home-review-count');
   if (el) el.textContent = count;
@@ -371,7 +404,7 @@ function openAddReview() {
   closeReviewLog();
   setTimeout(() => document.getElementById('add-review-modal').classList.add('open'), 200);
   addReviewStars = 5;
-  document.querySelectorAll('.add-star').forEach(s => s.style.filter='none');
+  document.querySelectorAll('.add-star').forEach(s => s.style.filter = 'none');
   document.getElementById('add-review-content').value = '';
   document.getElementById('add-review-replied').value = '0';
 }
@@ -381,9 +414,9 @@ function closeAddReview() {
 }
 
 function setAddStar(i) {
-  addReviewStars = i+1;
-  document.querySelectorAll('.add-star').forEach((s,j) =>
-    s.style.filter = j<=i ? 'none' : 'grayscale(1) brightness(.4)'
+  addReviewStars = i + 1;
+  document.querySelectorAll('.add-star').forEach((s, j) =>
+    s.style.filter = j <= i ? 'none' : 'grayscale(1) brightness(.4)'
   );
 }
 
@@ -405,19 +438,20 @@ function saveReviewLog() {
 
 function toggleReplied(id) {
   const logs = getReviewLogs();
-  const log = logs.find(l => l.id===id);
-  if (log) { log.replied=!log.replied; saveReviewLogs(logs); renderReviewLog(); updateReviewCount(); }
+  const log = logs.find(l => l.id === id);
+  if (log) { log.replied = !log.replied; saveReviewLogs(logs); renderReviewLog(); updateReviewCount(); }
 }
 
 function deleteReviewLog(id) {
-  saveReviewLogs(getReviewLogs().filter(l => l.id!==id));
-  renderReviewLog(); updateReviewCount();
+  saveReviewLogs(getReviewLogs().filter(l => l.id !== id));
+  renderReviewLog();
+  updateReviewCount();
 }
 
 function renderReviewLog() {
   const el = document.getElementById('review-log-list');
   if (!el) return;
-  const cutoff = Date.now() - 3*86400000;
+  const cutoff = Date.now() - 3 * 86400000;
   const logs = getReviewLogs().filter(r => r.ts >= cutoff);
   if (!logs.length) {
     el.innerHTML = '<div class="empty"><div class="ei">💬</div>최근 3일간 기록된 리뷰가 없습니다<br>리뷰를 받으면 추가해보세요</div>';
@@ -425,13 +459,15 @@ function renderReviewLog() {
   }
   el.innerHTML = logs.map(r => {
     const date = new Date(r.ts);
-    const dateStr = `${date.getMonth()+1}/${date.getDate()} ${String(date.getHours()).padStart(2,'0')}:${String(date.getMinutes()).padStart(2,'0')}`;
-    const stars = '⭐'.repeat(r.stars)+'☆'.repeat(5-r.stars);
+    const dateStr = `${date.getMonth() + 1}/${date.getDate()} ${String(date.getHours()).padStart(2,'0')}:${String(date.getMinutes()).padStart(2,'0')}`;
+    const stars = '⭐'.repeat(r.stars) + '☆'.repeat(5 - r.stars);
+    const safeContent = escapeHtml(r.content);
+    const safeForAttr = r.content.replace(/'/g, '&apos;').replace(/"/g, '&quot;');
     return `
       <div class="review-log-item">
         <div class="rl-header">
           <div style="display:flex;align-items:center;gap:8px;">
-            <span class="rl-platform">${r.platform}</span>
+            <span class="rl-platform">${escapeHtml(r.platform)}</span>
             <span style="font-size:12px">${stars}</span>
           </div>
           <div style="display:flex;align-items:center;gap:6px;">
@@ -439,12 +475,12 @@ function renderReviewLog() {
             <button class="rl-del" onclick="deleteReviewLog(${r.id})">✕</button>
           </div>
         </div>
-        <div class="rl-content">${r.content}</div>
+        <div class="rl-content">${safeContent}</div>
         <div class="rl-footer">
-          <button class="rl-reply-btn ${r.replied?'replied':''}" onclick="toggleReplied(${r.id})">
-            ${r.replied?'✅ 답변완료':'⬜ 미답변'}
+          <button class="rl-reply-btn ${r.replied ? 'replied' : ''}" onclick="toggleReplied(${r.id})">
+            ${r.replied ? '✅ 답변완료' : '⬜ 미답변'}
           </button>
-          <button class="btn btn-outline btn-sm" onclick="useReviewInTab('${r.content.replace(/'/g,"\\'")}',${r.stars})">답글 생성</button>
+          <button class="btn btn-outline btn-sm" onclick="useReviewInTab('${safeForAttr}',${r.stars})">답글 생성</button>
         </div>
       </div>`;
   }).join('');
@@ -456,12 +492,15 @@ function useReviewInTab(content, stars) {
     switchTab('review');
     document.getElementById('review-text').value = content;
     state.reviewStars = stars;
-    document.querySelectorAll('.star').forEach((s,j) => s.classList.toggle('on', j<stars));
+    document.querySelectorAll('.star').forEach((s, j) => s.classList.toggle('on', j < stars));
   }, 300);
 }
 
 // ── SETTINGS ──────────────────────────────────────────────
-function openSettings() { document.getElementById('settings-modal').classList.add('open'); document.getElementById('api-key-input').value = state.apiKey; }
+function openSettings() {
+  document.getElementById('settings-modal').classList.add('open');
+  document.getElementById('api-key-input').value = state.apiKey;
+}
 function closeSettings() { document.getElementById('settings-modal').classList.remove('open'); }
 function saveSettings() {
   const key = document.getElementById('api-key-input').value.trim();
@@ -473,33 +512,45 @@ function saveSettings() {
 
 // ── CLAUDE API ────────────────────────────────────────────
 async function claudeAPI(prompt) {
-  const res = await fetch('https://api.anthropic.com/v1/messages', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-api-key': state.apiKey,
-      'anthropic-version': '2023-06-01',
-      'anthropic-dangerous-direct-browser-access': 'true',
-    },
-    body: JSON.stringify({
-      model: 'claude-sonnet-4-6',
-      max_tokens: 1024,
-      messages: [{ role:'user', content:prompt }],
-    }),
-  });
-  if (!res.ok) {
-    const err = await res.json().catch(()=>({}));
-    throw new Error(err.error?.message || `API 오류 (${res.status})`);
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 30000); // 30초 타임아웃
+  try {
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': state.apiKey,
+        'anthropic-version': '2023-06-01',
+        'anthropic-dangerous-direct-browser-access': 'true',
+      },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-6',
+        max_tokens: 1500,
+        messages: [{ role: 'user', content: prompt }],
+      }),
+      signal: controller.signal,
+    });
+    clearTimeout(timeout);
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      if (res.status === 401) throw new Error('API 키가 올바르지 않습니다. 설정을 확인해주세요.');
+      if (res.status === 429) throw new Error('요청이 너무 많습니다. 잠시 후 다시 시도해주세요.');
+      throw new Error(err.error?.message || `API 오류 (${res.status})`);
+    }
+    const data = await res.json();
+    return data.content[0].text;
+  } catch (e) {
+    clearTimeout(timeout);
+    if (e.name === 'AbortError') throw new Error('요청 시간이 초과됐습니다. 다시 시도해주세요.');
+    throw e;
   }
-  const data = await res.json();
-  return data.content[0].text;
 }
 
 // ── UTILS ─────────────────────────────────────────────────
 function copyText(btn, text) {
   navigator.clipboard.writeText(text).then(() => {
     btn.textContent = '✅';
-    setTimeout(() => btn.textContent='복사', 1500);
+    setTimeout(() => btn.textContent = '복사', 1500);
     toast('클립보드에 복사됐습니다');
   }).catch(() => toast('복사 실패'));
 }
@@ -517,18 +568,58 @@ function formatDate(date, fmt) {
   const days = ['일','월','화','수','목','금','토'];
   return fmt
     .replace('YYYY', d.getFullYear())
-    .replace('MM', String(d.getMonth()+1).padStart(2,'0'))
-    .replace('DD', String(d.getDate()).padStart(2,'0'))
+    .replace('MM', String(d.getMonth() + 1).padStart(2, '0'))
+    .replace('DD', String(d.getDate()).padStart(2, '0'))
     .replace('ddd', days[d.getDay()]);
 }
 
 function parseCSVRow(row) {
-  const result = []; let cur=''; let inQuote=false;
-  for (let i=0; i<row.length; i++) {
-    if (row[i]==='"') { inQuote=!inQuote; continue; }
-    if (row[i]===',' && !inQuote) { result.push(cur.trim()); cur=''; continue; }
-    cur+=row[i];
+  const result = [];
+  let cur = '';
+  let inQuote = false;
+  for (let i = 0; i < row.length; i++) {
+    if (row[i] === '"') {
+      if (inQuote && row[i + 1] === '"') { cur += '"'; i++; } // escaped quote
+      else { inQuote = !inQuote; }
+      continue;
+    }
+    if (row[i] === ',' && !inQuote) { result.push(cur.trim()); cur = ''; continue; }
+    cur += row[i];
   }
   result.push(cur.trim());
   return result;
+}
+
+// AI 응답에서 번호 목록 파싱 (더 강건한 버전)
+function parseNumberedList(text) {
+  const results = [];
+  const lines = text.split('\n');
+  let current = '';
+  for (const line of lines) {
+    if (/^[123]\.\s+/.test(line.trim())) {
+      if (current.trim()) results.push(current.trim());
+      current = line.replace(/^[123]\.\s+/, '');
+    } else if (current !== '') {
+      current += '\n' + line;
+    }
+  }
+  if (current.trim()) results.push(current.trim());
+
+  // 파싱 실패 시 텍스트 그대로 3분할 시도
+  if (!results.length) {
+    const fallback = text.split(/\n\n+/).filter(s => s.trim().length > 10);
+    return fallback.slice(0, 3);
+  }
+  return results;
+}
+
+// XSS 방지용 HTML 이스케이프
+function escapeHtml(str) {
+  if (!str) return '';
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
 }
