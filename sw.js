@@ -1,5 +1,5 @@
-const CACHE_NAME = 'bongdony-v10';
-const ASSETS = ['./index.html', './style.css', './app.js', './manifest.json', './LOGO1.png'];
+const CACHE_NAME = 'bongdony-v11';
+const ASSETS = ['./index.html', './style.css?v=11', './app.js?v=11', './manifest.json', './LOGO1.png'];
 
 self.addEventListener('install', event => {
   event.waitUntil(caches.open(CACHE_NAME).then(cache => cache.addAll(ASSETS)));

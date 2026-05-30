@@ -5,6 +5,7 @@ const CONFIG = {
   restaurantName: '봉도니',
   instagramId: 'bongdony_jeju',
   reservationRefreshMs: 30000,
+  appVersion: '11',
 };
 
 // ── STATE ─────────────────────────────────────────────────
@@ -26,7 +27,10 @@ let addReviewStars = 5;
 // ── INIT ──────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
   if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('./sw.js').catch(() => {});
+    navigator.serviceWorker
+      .register(`./sw.js?v=${CONFIG.appVersion}`)
+      .then(reg => reg.update())
+      .catch(() => {});
   }
   initStars();
   initTabs();
@@ -670,7 +674,7 @@ function normalizeReservationDate(value) {
   if (lowered === '오늘') return formatDate(today, 'YYYY-MM-DD');
   if (lowered === '내일') return formatDate(new Date(today.getTime() + 86400000), 'YYYY-MM-DD');
 
-  if (/^\d{5}$/.test(lowered)) {
+  if (/^\d{4,6}(\.\d+)?$/.test(lowered)) {
     return googleSerialDateToKey(Number(lowered));
   }
 
@@ -690,7 +694,7 @@ function normalizeReservationDate(value) {
 
 function formatReservationDate(value) {
   const raw = String(value || '').trim();
-  if (/^\d{5}$/.test(raw)) {
+  if (/^\d{4,6}(\.\d+)?$/.test(raw)) {
     const date = googleSerialDateToDate(Number(raw));
     return `${date.getMonth() + 1}월 ${date.getDate()}일`;
   }
@@ -771,11 +775,12 @@ function isLikelyPeople(value) {
 function normalizePeopleText(value) {
   const raw = String(value || '').trim();
   const match = raw.match(/^(\d{1,2})\s*명?$/);
-  return match ? `${Number(match[1])}명` : raw;
+  return match ? String(Number(match[1])) : raw;
 }
 
 function formatPeople(value) {
-  return normalizePeopleText(value);
+  const normalized = normalizePeopleText(value);
+  return /^\d{1,2}$/.test(normalized) ? `${normalized}명` : normalized;
 }
 
 function formatDate(date, fmt) {
