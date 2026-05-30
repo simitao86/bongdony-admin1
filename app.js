@@ -5,6 +5,7 @@ const CONFIG = {
   restaurantName: '봉도니',
   instagramId: 'bongdony_jeju',
   reservationRefreshMs: 30000,
+  oneSignalAppId: '239d5b75-6ff7-4f7b-b05c-e9885841c10c',
 };
 
 // ── STATE ─────────────────────────────────────────────────
@@ -39,6 +40,7 @@ document.addEventListener('DOMContentLoaded', () => {
   startReservationAutoRefresh();
   checkInstaReminder();
   setInterval(checkInstaReminder, 60000); // 매 분 체크 → 오후 5시 정각에 표시
+  initOneSignal();
 });
 
 // ── 인스타 게시 알림 배너 ────────────────────────────────
@@ -674,6 +676,7 @@ function useReviewInTab(content, stars) {
 function openSettings() {
   document.getElementById('settings-modal').classList.add('open');
   document.getElementById('api-key-input').value = state.apiKey;
+  updatePushStatus();
 }
 function closeSettings() { document.getElementById('settings-modal').classList.remove('open'); }
 function saveSettings() {
@@ -922,4 +925,61 @@ function escapeHtml(str) {
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#39;');
+}
+
+// ── 푸시 알림 (OneSignal) ──────────────────────────────────
+function initOneSignal() {
+  if (!CONFIG.oneSignalAppId || CONFIG.oneSignalAppId === 'YOUR_ONESIGNAL_APP_ID') return;
+  window.OneSignalDeferred = window.OneSignalDeferred || [];
+  window.OneSignalDeferred.push(async function(OneSignal) {
+    await OneSignal.init({
+      appId: CONFIG.oneSignalAppId,
+      serviceWorkerPath: 'sw.js',
+      serviceWorkerScope: '/',
+      notifyButton: { enable: false },
+    });
+    updatePushStatus();
+  });
+}
+
+async function updatePushStatus() {
+  const btn = document.getElementById('push-toggle-btn');
+  const txt = document.getElementById('push-status-text');
+  if (!btn || !txt) return;
+  try {
+    const subscribed = window.OneSignal?.User?.PushSubscription?.optedIn;
+    if (subscribed) {
+      btn.textContent = '알림 끄기';
+      btn.style.borderColor = 'var(--gold)';
+      txt.textContent = '✅ 켜짐 · 새 예약 알림 받는 중';
+      txt.style.color = 'var(--gold)';
+    } else {
+      btn.textContent = '알림 켜기';
+      btn.style.borderColor = '';
+      txt.textContent = '꺼짐';
+      txt.style.color = 'var(--text3)';
+    }
+  } catch(e) {
+    txt.textContent = '상태 확인 실패';
+  }
+}
+
+async function togglePushNotifications() {
+  if (!window.OneSignal) {
+    showToast('OneSignal이 초기화되지 않았습니다');
+    return;
+  }
+  try {
+    const isSubscribed = window.OneSignal.User.PushSubscription.optedIn;
+    if (isSubscribed) {
+      await window.OneSignal.User.PushSubscription.optOut();
+      showToast('예약 알림을 껐습니다');
+    } else {
+      await window.OneSignal.User.PushSubscription.optIn();
+      showToast('예약 알림을 켰습니다 🔔');
+    }
+    updatePushStatus();
+  } catch(e) {
+    showToast('알림 설정 중 오류가 발생했습니다');
+  }
 }

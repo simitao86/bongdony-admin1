@@ -9,6 +9,7 @@
 <title>봉도니 관리자</title>
 <link rel="manifest" href="./manifest.json">
 <link rel="stylesheet" href="./style.css">
+<script src="https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js" defer></script>
 </head>
 <body>
 
@@ -278,6 +279,18 @@
     </div>
     <div style="font-size:12px;color:var(--text3);margin:-8px 0 20px;line-height:1.8;font-weight:500">
       console.anthropic.com에서 발급 · 이 기기에만 저장됩니다
+    </div>
+    <div class="divider"></div>
+    <div class="divider"></div>
+    <div class="form-group" style="margin-bottom:8px">
+      <label>예약 푸시 알림</label>
+      <div style="display:flex;align-items:center;gap:12px;margin-top:10px">
+        <button class="btn btn-outline btn-sm" id="push-toggle-btn" onclick="togglePushNotifications()">알림 켜기</button>
+        <span id="push-status-text" style="font-size:12px;color:var(--text3);font-weight:500">확인 중...</span>
+      </div>
+    </div>
+    <div style="font-size:12px;color:var(--text3);margin-bottom:20px;line-height:1.8;font-weight:500">
+      새 예약이 들어오면 앱이 닫혀 있어도 알림이 와요
     </div>
     <div class="divider"></div>
     <div class="form-group">

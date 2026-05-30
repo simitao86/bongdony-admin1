@@ -1,4 +1,8 @@
-const CACHE_NAME = 'bongdony-v12';
+try {
+  importScripts('https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.sw.js');
+} catch(e) {}
+
+const CACHE_NAME = 'bongdony-v13';
 const ASSETS = ['./index.html', './style.css', './app.js', './manifest.json', './LOGO1.png'];
 
 self.addEventListener('install', event => {
@@ -31,14 +35,4 @@ self.addEventListener('fetch', event => {
       })
       .catch(() => caches.match(event.request).then(cached => cached || caches.match('./index.html')))
   );
-});
-
-self.addEventListener('push', event => {
-  const data = event.data?.json() || { title: 'Bongdony', body: 'New notification.' };
-  event.waitUntil(self.registration.showNotification(data.title, {
-    body: data.body,
-    icon: './LOGO1.png',
-    badge: './LOGO1.png',
-    vibrate: [200, 100, 200]
-  }));
 });
