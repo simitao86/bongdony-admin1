@@ -18,6 +18,7 @@ let state = {
   snsPhoto: null, // { media_type, data }
   reservationsLoading: false,
   lastReservationLoadAt: null,
+  reservationError: '',
 };
 
 let addReviewStars = 5;
@@ -348,13 +349,16 @@ async function loadReservations() {
       };
     }).filter(r => r.name);
 
+    state.reservationError = '';
     state.lastReservationLoadAt = new Date();
     renderHome();
     renderCRM();
     if (state.currentTab === 'reservations') renderReservations();
     updateReviewCount();
   } catch (e) {
+    state.reservationError = e.message || '시트 로드 실패';
     console.warn('시트 로드 실패:', e.message);
+    if (state.currentTab === 'reservations') renderReservations();
   } finally {
     state.reservationsLoading = false;
   }
@@ -363,6 +367,15 @@ async function loadReservations() {
 function renderReservations() {
   const listEl = document.getElementById('res-list');
   if (!listEl) return;
+  if (state.reservationError) {
+    listEl.innerHTML = `
+      <div class="empty">
+        <div class="ei">⚠️</div>
+        구글시트 연결을 확인해주세요<br>
+        시트를 링크가 있는 모든 사용자가 볼 수 있게 공유해야 합니다.
+      </div>`;
+    return;
+  }
   const today = formatDate(new Date(), 'YYYY-MM-DD');
   const tomorrow = formatDate(new Date(Date.now() + 86400000), 'YYYY-MM-DD');
   const weekLater = formatDate(new Date(Date.now() + 7 * 86400000), 'YYYY-MM-DD');
@@ -409,7 +422,7 @@ async function refreshReservations() {
   toast('새로고침 중...');
   await loadReservations();
   renderReservations();
-  toast('✅ 새로고침 완료');
+  toast(state.reservationError ? '구글시트 공유 설정이 필요합니다' : '✅ 새로고침 완료');
 }
 
 // ── CRM ───────────────────────────────────────────────────
