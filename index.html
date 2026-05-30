@@ -5,50 +5,76 @@
 <meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="theme-color" content="#0f0b08">
+<meta name="theme-color" content="#120E07">
 <title>봉도니 관리자</title>
 <link rel="manifest" href="./manifest.json">
 <link rel="stylesheet" href="./style.css">
 </head>
 <body>
 
+<!-- SVG 골드 필터 -->
+<svg class="svg-filters" aria-hidden="true">
+  <defs>
+    <filter id="goldPigFilter" color-interpolation-filters="sRGB" x="-20%" y="-20%" width="140%" height="140%">
+      <feFlood flood-color="#C9A84C" result="gold"/>
+      <feComposite in="gold" in2="SourceGraphic" operator="in" result="goldLine"/>
+      <feGaussianBlur in="goldLine" stdDeviation="5" result="glow"/>
+      <feColorMatrix in="glow" type="matrix" result="glow2" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 2.5 0"/>
+      <feGaussianBlur in="goldLine" stdDeviation="12" result="outerGlow"/>
+      <feColorMatrix in="outerGlow" type="matrix" result="outerGlow2" values="1 0 0 0 0.1  0 0.8 0 0 0  0 0 0 0 0  0 0 0 1.2 0"/>
+      <feMerge>
+        <feMergeNode in="outerGlow2"/>
+        <feMergeNode in="glow2"/>
+        <feMergeNode in="goldLine"/>
+      </feMerge>
+    </filter>
+  </defs>
+</svg>
+
 <!-- HEADER -->
 <header class="header">
-  <div class="header-left">
-    <div class="header-logo">🍖</div>
-    <div>
-      <div class="header-title">봉도니 관리자</div>
-      <div class="header-sub" id="header-date">로딩 중...</div>
+  <div class="logo-hero">
+    <div class="pig-container">
+      <img src="./LOGO1.png" class="pig-img" alt="봉도니 로고">
     </div>
+    <div class="brand-wrap">
+      <div class="brand-name">BONGDONY</div>
+    </div>
+    <div class="brand-sub">Jeju Premium BBQ · 관리자</div>
   </div>
-  <div class="header-btn" onclick="openSettings()">⚙️</div>
+  <div class="header-bar">
+    <div class="header-date" id="header-date">로딩 중...</div>
+    <div class="header-btn" onclick="openSettings()">⚙️</div>
+  </div>
 </header>
 
 <!-- PAGES -->
 <div class="pages">
 
-  <!-- ── HOME ── -->
+  <!-- 홈 -->
   <div class="page active" id="page-home">
-
     <div class="today-banner">
       <div class="tb-top">
         <div>
-          <div class="tb-date" id="home-date-label">오늘</div>
-          <div class="tb-count" id="home-today-count">0</div>
-          <div class="tb-label">건의 예약</div>
+          <div class="tb-eyebrow">TODAY RESERVATIONS</div>
+          <div class="tb-count-row">
+            <div class="tb-count" id="home-today-count">0</div>
+            <div class="tb-unit">건</div>
+          </div>
+          <div class="tb-sublabel" id="home-date-label">오늘</div>
         </div>
-        <div class="today-badge" id="home-open-status">영업 중</div>
+        <div class="tb-status" id="home-open-status">확인 중</div>
       </div>
+      <div id="home-next-res"></div>
     </div>
-    <div id="home-next-res"></div>
 
     <div class="stat-grid">
-      <div class="stat-card">
+      <div class="stat-card" onclick="switchTab('reservations')">
         <span class="sc-icon">📋</span>
         <div class="sc-num" id="home-total">0</div>
         <div class="sc-lbl">전체 예약</div>
       </div>
-      <div class="stat-card" onclick="openReviewLog()" style="cursor:pointer">
+      <div class="stat-card" onclick="openReviewLog()">
         <span class="sc-icon">💬</span>
         <div class="sc-num" id="home-review-count">0</div>
         <div class="sc-lbl">최근 3일 리뷰</div>
@@ -59,42 +85,28 @@
     <div class="quick-grid">
       <div class="quick-btn" onclick="switchTab('review')">
         <span class="qi">⭐</span>
-        <div>
-          <div class="ql">리뷰 답글</div>
-          <div class="qa">AI 답글 3가지 생성</div>
-        </div>
+        <div><div class="ql">리뷰 답글</div><div class="qa">AI 답글 즉시 생성</div></div>
       </div>
       <div class="quick-btn" onclick="switchTab('sns')">
         <span class="qi">📸</span>
-        <div>
-          <div class="ql">SNS 캡션</div>
-          <div class="qa">인스타 캡션 생성</div>
-        </div>
+        <div><div class="ql">SNS 캡션</div><div class="qa">인스타 캡션 생성</div></div>
       </div>
       <div class="quick-btn" onclick="switchTab('reservations')">
         <span class="qi">📋</span>
-        <div>
-          <div class="ql">예약 현황</div>
-          <div class="qa">실시간 예약 목록</div>
-        </div>
+        <div><div class="ql">예약 현황</div><div class="qa">실시간 예약 목록</div></div>
       </div>
       <div class="quick-btn" onclick="switchTab('crm')">
         <span class="qi">👥</span>
-        <div>
-          <div class="ql">단골 현황</div>
-          <div class="qa">VIP · 단골 · 신규</div>
-        </div>
+        <div><div class="ql">단골 현황</div><div class="qa">VIP · 단골 · 신규</div></div>
       </div>
     </div>
 
     <div class="section-label">오늘 예약</div>
     <div id="home-recent"></div>
-
   </div>
 
-  <!-- ── REVIEW ── -->
+  <!-- 리뷰 -->
   <div class="page" id="page-review">
-
     <div class="section-label">리뷰 정보 입력</div>
     <div class="card">
       <div class="card-title">별점</div>
@@ -106,26 +118,21 @@
         <span class="star" data-i="4">⭐</span>
       </div>
     </div>
-
     <div class="card">
       <div class="form-group" style="margin-bottom:0">
         <label>리뷰 내용 붙여넣기</label>
         <textarea id="review-text" placeholder="손님 리뷰를 여기에 붙여넣어 주세요...&#10;&#10;네이버, 카카오맵, 구글 어디든 가능합니다."></textarea>
       </div>
     </div>
-
-    <div style="display:flex;gap:8px;">
+    <div style="display:flex;gap:8px;padding:0 16px 12px;">
       <button class="btn btn-primary" onclick="generateReviews()" style="flex:1">✨ AI 답글 3가지 생성</button>
       <button class="btn btn-outline btn-sm" onclick="clearReviewForm()" style="padding:15px 18px;">초기화</button>
     </div>
-
-    <div id="review-results"></div>
-
+    <div id="review-results" class="ai-results" style="padding:0 16px"></div>
   </div>
 
-  <!-- ── SNS ── -->
+  <!-- SNS -->
   <div class="page" id="page-sns">
-
     <div class="section-label">게시물 정보 입력</div>
     <div class="card">
       <div class="form-group">
@@ -133,62 +140,51 @@
         <textarea id="sns-mood" rows="3" placeholder="예: 저녁 불빛 아래 삼겹살이 지글지글 구워지는 장면&#10;예: 4명이 즐겁게 식사하는 모습&#10;예: 오늘 신선하게 세팅된 고기 플레이팅"></textarea>
       </div>
       <div class="form-group" style="margin-bottom:0">
-        <label>메뉴 <span style="color:var(--text-muted);font-weight:400;text-transform:none">(선택)</span></label>
+        <label>메뉴 <span style="color:var(--text3);font-weight:400;text-transform:none">(선택)</span></label>
         <input type="text" id="sns-menu" placeholder="예: 봉도니모둠, 오겹살, 생갈비...">
       </div>
     </div>
-
-    <div style="display:flex;gap:8px;">
+    <div style="display:flex;gap:8px;padding:0 16px 12px;">
       <button class="btn btn-primary" onclick="generateCaptions()" style="flex:1">✨ 캡션 + 해시태그 생성</button>
       <button class="btn btn-outline btn-sm" onclick="clearSNSForm()" style="padding:15px 18px;">초기화</button>
     </div>
-
-    <div id="sns-results"></div>
-
+    <div id="sns-results" class="ai-results" style="padding:0 16px"></div>
   </div>
 
-  <!-- ── RESERVATIONS ── -->
+  <!-- 예약 -->
   <div class="page" id="page-reservations">
-
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin:0 16px 16px;">
       <div>
-        <div style="font-size:17px;font-weight:900;letter-spacing:-.3px">예약 현황</div>
-        <div style="font-size:11px;color:var(--text-muted);margin-top:2px;font-weight:500">구글 시트 실시간 연동</div>
+        <div style="font-size:17px;font-weight:900;letter-spacing:-.3px;color:var(--text)">예약 현황</div>
+        <div style="font-size:11px;color:var(--text3);margin-top:2px;font-weight:500">구글 시트 실시간 연동</div>
       </div>
       <button class="btn btn-outline btn-sm" onclick="refreshReservations()">🔄 새로고침</button>
     </div>
-
     <div class="date-tabs">
       <div class="date-tab active" data-filter="today" onclick="setDateFilter('today')">오늘</div>
       <div class="date-tab" data-filter="tomorrow" onclick="setDateFilter('tomorrow')">내일</div>
       <div class="date-tab" data-filter="week" onclick="setDateFilter('week')">이번 주</div>
       <div class="date-tab" data-filter="all" onclick="setDateFilter('all')">전체</div>
     </div>
-
     <div id="res-list">
       <div class="loading"><div class="spinner"></div>예약 목록 불러오는 중...</div>
     </div>
-
   </div>
 
-  <!-- ── CRM ── -->
+  <!-- 단골 -->
   <div class="page" id="page-crm">
-
-    <div style="margin-bottom:16px;">
-      <div style="font-size:17px;font-weight:900;letter-spacing:-.3px;margin-bottom:4px">단골 현황</div>
-      <div style="font-size:11px;color:var(--text-muted);font-weight:500">예약 횟수 기준 자동 등급 산정</div>
+    <div style="margin:0 16px 16px;">
+      <div style="font-size:17px;font-weight:900;letter-spacing:-.3px;margin-bottom:4px;color:var(--text)">단골 현황</div>
+      <div style="font-size:11px;color:var(--text3);font-weight:500">예약 횟수 기준 자동 등급 산정</div>
     </div>
-
-    <div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap;">
+    <div style="display:flex;gap:8px;margin:0 16px 16px;flex-wrap:wrap;">
       <span class="crm-grade grade-vip">⭐ VIP (5회+)</span>
       <span class="crm-grade grade-regular">🍖 단골 (3~4회)</span>
       <span class="crm-grade grade-new">👤 신규 (1~2회)</span>
     </div>
-
     <div id="crm-list">
       <div class="loading"><div class="spinner"></div>데이터 불러오는 중...</div>
     </div>
-
   </div>
 
 </div>
@@ -202,7 +198,7 @@
   <div class="tab-item" data-tab="crm"><span class="tab-icon">👥</span>단골</div>
 </nav>
 
-<!-- REVIEW LOG MODAL -->
+<!-- 리뷰 로그 모달 -->
 <div class="modal-overlay" id="review-log-modal" onclick="if(event.target===this)closeReviewLog()">
   <div class="modal-sheet" style="max-height:85vh;overflow-y:auto">
     <div class="modal-handle"></div>
@@ -210,19 +206,16 @@
       <div class="modal-title" style="margin-bottom:0">최근 3일 리뷰</div>
       <button class="btn btn-primary btn-sm" onclick="openAddReview()">+ 리뷰 추가</button>
     </div>
-
-    <!-- 플랫폼 바로가기 -->
     <div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap;">
       <a href="https://map.naver.com/v5/search/봉도니" target="_blank" class="platform-btn">네이버</a>
       <a href="https://place.map.kakao.com/search/봉도니" target="_blank" class="platform-btn">카카오맵</a>
       <a href="https://www.google.com/search?q=봉도니+리뷰" target="_blank" class="platform-btn">구글</a>
     </div>
-
     <div id="review-log-list"></div>
   </div>
 </div>
 
-<!-- ADD REVIEW MODAL -->
+<!-- 리뷰 추가 모달 -->
 <div class="modal-overlay" id="add-review-modal" onclick="if(event.target===this)closeAddReview()">
   <div class="modal-sheet">
     <div class="modal-handle"></div>
@@ -230,20 +223,17 @@
     <div class="form-group">
       <label>플랫폼</label>
       <select id="add-review-platform">
-        <option>네이버</option>
-        <option>카카오맵</option>
-        <option>구글</option>
-        <option>기타</option>
+        <option>네이버</option><option>카카오맵</option><option>구글</option><option>기타</option>
       </select>
     </div>
     <div class="form-group">
       <label>별점</label>
       <div class="star-row" id="add-review-stars">
-        <span class="add-star" data-i="0" onclick="setAddStar(0)">⭐</span>
-        <span class="add-star" data-i="1" onclick="setAddStar(1)">⭐</span>
-        <span class="add-star" data-i="2" onclick="setAddStar(2)">⭐</span>
-        <span class="add-star" data-i="3" onclick="setAddStar(3)">⭐</span>
-        <span class="add-star" data-i="4" onclick="setAddStar(4)">⭐</span>
+        <span class="add-star" onclick="setAddStar(0)">⭐</span>
+        <span class="add-star" onclick="setAddStar(1)">⭐</span>
+        <span class="add-star" onclick="setAddStar(2)">⭐</span>
+        <span class="add-star" onclick="setAddStar(3)">⭐</span>
+        <span class="add-star" onclick="setAddStar(4)">⭐</span>
       </div>
     </div>
     <div class="form-group">
@@ -253,8 +243,7 @@
     <div class="form-group">
       <label>답글 상태</label>
       <select id="add-review-replied">
-        <option value="0">미답변</option>
-        <option value="1">답변완료</option>
+        <option value="0">미답변</option><option value="1">답변완료</option>
       </select>
     </div>
     <div style="display:flex;gap:8px;">
@@ -264,27 +253,23 @@
   </div>
 </div>
 
-<!-- SETTINGS MODAL -->
+<!-- 설정 모달 -->
 <div class="modal-overlay" id="settings-modal" onclick="if(event.target===this)closeSettings()">
   <div class="modal-sheet">
     <div class="modal-handle"></div>
     <div class="modal-title">설정</div>
-
     <div class="form-group">
       <label>Claude API 키</label>
       <input type="password" id="api-key-input" placeholder="sk-ant-api03-...">
     </div>
-    <div style="font-size:12px;color:var(--text-muted);margin:-8px 0 20px;line-height:1.8;font-weight:500">
+    <div style="font-size:12px;color:var(--text3);margin:-8px 0 20px;line-height:1.8;font-weight:500">
       console.anthropic.com에서 발급 · 이 기기에만 저장됩니다
     </div>
-
     <div class="divider"></div>
-
     <div class="form-group">
       <label>웹훅 URL</label>
-      <input type="text" value="https://hook.us2.make.com/6grcqyb621wgpobywyktd0fe0g3q1lmr" readonly style="font-size:11px;color:var(--text-muted);">
+      <input type="text" value="https://hook.us2.make.com/6grcqyb621wgpobywyktd0fe0g3q1lmr" readonly style="font-size:11px;color:var(--text3);">
     </div>
-
     <div style="display:flex;gap:8px;margin-top:8px;">
       <button class="btn btn-primary" onclick="saveSettings()">저장</button>
       <button class="btn btn-outline" onclick="closeSettings()">닫기</button>
@@ -292,37 +277,18 @@
   </div>
 </div>
 
-<!-- TOAST -->
+<!-- 토스트 -->
 <div class="toast" id="toast"></div>
 
 <script src="./app.js"></script>
 <script>
-  const days = ['일','월','화','수','목','금','토'];
-
-  function updateClock() {
-    const now = new Date();
-    const h = String(now.getHours()).padStart(2,'0');
-    const m = String(now.getMinutes()).padStart(2,'0');
-    const s = String(now.getSeconds()).padStart(2,'0');
-    const dateStr = `${now.getMonth()+1}월 ${now.getDate()}일 ${days[now.getDay()]}요일`;
-    const timeStr = `${h}:${m}:${s}`;
-    document.getElementById('header-date').textContent = `${dateStr}  ·  ${timeStr}`;
-    document.getElementById('home-date-label').textContent = dateStr;
+  // 헤더 높이에 맞춰 페이지 top 동적 설정
+  function adjustLayout() {
+    const h = document.querySelector('.header').offsetHeight;
+    document.querySelector('.pages').style.top = h + 'px';
   }
-  updateClock();
-  setInterval(updateClock, 1000);
-
-  const now = new Date();
-
-  const h = now.getHours();
-  const badge = document.getElementById('home-open-status');
-  if (h >= 12 && h < 22) {
-    badge.textContent = '영업 중 🟢'; badge.style.color = '#4ade80';
-    badge.style.background = 'rgba(74,222,128,.1)';
-    badge.style.borderColor = 'rgba(74,222,128,.2)';
-  } else {
-    badge.textContent = '영업 종료'; badge.style.opacity = '.5';
-  }
+  adjustLayout();
+  window.addEventListener('resize', adjustLayout);
 </script>
 </body>
 </html>
