@@ -37,7 +37,33 @@ document.addEventListener('DOMContentLoaded', () => {
   updateReviewCount();
   loadReservations();
   startReservationAutoRefresh();
+  checkInstaReminder();
+  setInterval(checkInstaReminder, 60000); // 매 분 체크 → 오후 5시 정각에 표시
 });
+
+// ── 인스타 게시 알림 배너 ────────────────────────────────
+function checkInstaReminder() {
+  const banner = document.getElementById('insta-banner');
+  if (!banner) return;
+  const now = new Date();
+  const today = formatDate(now, 'YYYY-MM-DD');
+  const dismissed = localStorage.getItem('insta_reminder_date');
+  // 오후 5시(17시)부터 자정 전까지, 오늘 안 닫았으면 표시
+  if (now.getHours() >= 17 && dismissed !== today) {
+    banner.classList.add('show');
+  } else {
+    banner.classList.remove('show');
+  }
+}
+function dismissInstaReminder() {
+  localStorage.setItem('insta_reminder_date', formatDate(new Date(), 'YYYY-MM-DD'));
+  const b = document.getElementById('insta-banner');
+  if (b) b.classList.remove('show');
+}
+function gotoSNS() {
+  dismissInstaReminder();
+  switchTab('sns');
+}
 
 // ── CLOCK ─────────────────────────────────────────────────
 function updateClock() {
@@ -191,22 +217,43 @@ async function generateReviews() {
   resultsEl.innerHTML = '<div class="loading"><div class="spinner"></div>AI가 답글을 생성하고 있습니다...</div>';
   state.aiLoading = true;
 
-  const prompt = `당신은 제주도 삼겹살 맛집 "${CONFIG.restaurantName}" 사장님입니다.
-아래 손님 리뷰에 대한 답글을 3가지 다른 톤으로 작성해주세요.
+  const prompt = `당신은 제주시 봉개동에 위치한 삼겹살 맛집 "${CONFIG.restaurantName}"의 사장님입니다.
+아래 손님 리뷰에 사장님이 직접 다는 답글 3개를 작성하세요. 각각 서로 다른 사장님 성격으로:
+· 답글1 = 젊고 친절한 남자 사장님 (다정하고 트렌디한 말투)
+· 답글2 = 씩씩하고 즐겁고 친절한 사장님 (활기차고 에너지 넘치는 말투)
+· 답글3 = 유쾌하고 유머러스한 친절한 사장님 (위트있고 웃음 주는 말투)
+
+[별점에 따라 답글 방향을 반드시 다르게]
+· 4~5점: 진심 어린 감사 + 재방문 환영
+· 3점: 감사 인사 + 아쉬우셨던 점 개선 약속
+· 1~2점: 정중한 사과 + 구체적 개선 의지 + 다시 모실 기회 부탁
+
 리뷰 별점: ${state.reviewStars}점
 리뷰 내용: "${review}"
-요구사항: 각 3~5문장. 봉도니 따뜻한 브랜드 톤. "고객님" 사용.
-1번: 감사하고 따뜻한 톤 / 2번: 전문적이고 격식체 / 3번: 친근하고 캐주얼한 톤
-형식: "1. [답글]" "2. [답글]" "3. [답글]"`;
+
+규칙:
+- 각 답글 3~5문장, "고객님" 호칭, 봉도니의 따뜻한 톤
+- 사장님이 고기를 직접 구워준다는 표현은 절대 쓰지 마세요(봉도니는 손님이 직접 굽습니다)
+- 반드시 아래 형식 그대로만 출력. 제목·설명·번호목록 쓰지 마세요.
+
+###1###
+(답글 본문)
+###2###
+(답글 본문)
+###3###
+(답글 본문)`;
+
+  const personas = ['젊은 사장님', '씩씩한 사장님', '유머 사장님'];
 
   try {
     const res = await claudeAPI(prompt);
-    const items = parseNumberedList(res);
+    let items = res.split(/###\s*\d+\s*###/).slice(1).map(s => s.trim()).filter(Boolean);
+    if (items.length < 2) items = parseNumberedList(res); // 형식 안 지켰을 때 폴백
     if (!items.length) throw new Error('답글 생성에 실패했습니다. 다시 시도해주세요.');
     resultsEl.innerHTML = items.slice(0, 3).map((text, i) => `
       <div class="ai-result-item">
         <div class="ai-result-header">
-          <div class="result-num">답글 ${i + 1}</div>
+          <div class="result-num">답글 ${i + 1}${personas[i] ? ' · ' + personas[i] : ''}</div>
           <button class="copy-btn" onclick="copyText(this, \`${text.replace(/`/g,'\\`').replace(/\$/g,'\\$')}\`)">복사</button>
         </div>
         <div class="result-text">${escapeHtml(text)}</div>
@@ -280,10 +327,10 @@ async function generateCaptions() {
   resultsEl.innerHTML = '<div class="loading"><div class="spinner"></div>AI가 캡션을 생성하고 있습니다...</div>';
   state.aiLoading = true;
 
-  const prompt = `당신은 제주도 삼겹살 맛집 "${CONFIG.restaurantName}"의 사장님입니다.
+  const prompt = `당신은 제주시 봉개동에 위치한 삼겹살 맛집 "${CONFIG.restaurantName}"의 사장님입니다.
 ${state.snsPhoto ? '첨부된 사진을 자세히 보고, 사진 속 음식·분위기·색감·장면을 살려서 ' : ''}인스타그램 게시물 캡션 3개를 작성하세요.
 ${mood ? `추가 설명: ${mood}` : ''}${menu ? `\n메뉴: ${menu}` : ''}
-인스타 계정: @${CONFIG.instagramId} / 위치: 제주시 번영로 589
+인스타 계정: @${CONFIG.instagramId} / 위치: 제주시 봉개동
 
 각 캡션은 서로 다른 "사장님 성격"으로 써주세요:
 · 캡션1 = 젊고 친절한 남자 사장님 (다정하고 트렌디한 말투)
@@ -291,6 +338,7 @@ ${mood ? `추가 설명: ${mood}` : ''}${menu ? `\n메뉴: ${menu}` : ''}
 · 캡션3 = 유쾌하고 유머러스한 친절한 사장님 (위트있고 웃음 주는 말투)
 
 각 캡션: 본문 2~4줄 + 마지막 줄에 해시태그 정확히 7개(제주·봉도니·삼겹살 감성, # 포함, 공백 구분).
+사장님이 고기를 직접 구워준다는 표현은 쓰지 마세요(봉도니는 손님이 직접 굽습니다).
 반드시 아래 형식 그대로만 출력하세요. 제목·설명·번호목록 절대 쓰지 마세요.
 
 ###1###

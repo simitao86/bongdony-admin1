@@ -1,4 +1,4 @@
-const CACHE_NAME = 'bongdony-v11';
+const CACHE_NAME = 'bongdony-v12';
 const ASSETS = ['./index.html', './style.css', './app.js', './manifest.json', './LOGO1.png'];
 
 self.addEventListener('install', event => {

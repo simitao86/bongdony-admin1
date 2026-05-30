@@ -8,7 +8,7 @@
 <meta name="theme-color" content="#120E07">
 <title>봉도니 관리자</title>
 <link rel="manifest" href="./manifest.json">
-<link rel="stylesheet" href="./style.css?v=11">
+<link rel="stylesheet" href="./style.css">
 </head>
 <body>
 
@@ -289,10 +289,21 @@
   </div>
 </div>
 
+<!-- 인스타 게시 알림 배너 -->
+<div class="insta-banner" id="insta-banner">
+  <span class="ib-icon">📸</span>
+  <div class="ib-text">
+    <div class="ib-title">인스타 게시 시간이에요!</div>
+    <div class="ib-sub">오늘의 봉도니를 올려보세요 ✨</div>
+  </div>
+  <button class="ib-go" onclick="gotoSNS()">올리기</button>
+  <button class="ib-close" onclick="dismissInstaReminder()" aria-label="닫기">✕</button>
+</div>
+
 <!-- 토스트 -->
 <div class="toast" id="toast"></div>
 
-<script src="./app.js?v=11"></script>
+<script src="./app.js"></script>
 <script>
   // 헤더 높이에 맞춰 페이지 top 동적 설정
   function adjustLayout() {
