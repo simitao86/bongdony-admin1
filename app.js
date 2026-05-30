@@ -5,7 +5,6 @@ const CONFIG = {
   restaurantName: '봉도니',
   instagramId: 'bongdony_jeju',
   reservationRefreshMs: 30000,
-  appVersion: '11',
 };
 
 // ── STATE ─────────────────────────────────────────────────
@@ -27,10 +26,7 @@ let addReviewStars = 5;
 // ── INIT ──────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
   if ('serviceWorker' in navigator) {
-    navigator.serviceWorker
-      .register(`./sw.js?v=${CONFIG.appVersion}`)
-      .then(reg => reg.update())
-      .catch(() => {});
+    navigator.serviceWorker.register('./sw.js').catch(() => {});
   }
   initStars();
   initTabs();
@@ -284,22 +280,40 @@ async function generateCaptions() {
   resultsEl.innerHTML = '<div class="loading"><div class="spinner"></div>AI가 캡션을 생성하고 있습니다...</div>';
   state.aiLoading = true;
 
-  const prompt = `당신은 제주도 삼겹살 맛집 "${CONFIG.restaurantName}"의 인스타그램 마케터입니다.
-${state.snsPhoto ? '첨부된 사진을 자세히 보고, 사진 속 음식·분위기·색감·장면을 살려서 ' : ''}인스타그램 게시물 캡션 3가지를 작성해주세요.
+  const prompt = `당신은 제주도 삼겹살 맛집 "${CONFIG.restaurantName}"의 사장님입니다.
+${state.snsPhoto ? '첨부된 사진을 자세히 보고, 사진 속 음식·분위기·색감·장면을 살려서 ' : ''}인스타그램 게시물 캡션 3개를 작성하세요.
 ${mood ? `추가 설명: ${mood}` : ''}${menu ? `\n메뉴: ${menu}` : ''}
 인스타 계정: @${CONFIG.instagramId} / 위치: 제주시 번영로 589
-요구사항: 2~4줄 + 해시태그 10~15개. 제주 감성과 봉도니 브랜드 강조.
-1번: 감성적 시적 / 2번: 정보 중심 / 3번: 친근하고 재미있는 톤
-형식: "1. [캡션]\n\n[해시태그]" 3개`;
+
+각 캡션은 서로 다른 "사장님 성격"으로 써주세요:
+· 캡션1 = 젊고 친절한 남자 사장님 (다정하고 트렌디한 말투)
+· 캡션2 = 씩씩하고 즐겁고 친절한 사장님 (활기차고 에너지 넘치는 말투)
+· 캡션3 = 유쾌하고 유머러스한 친절한 사장님 (위트있고 웃음 주는 말투)
+
+각 캡션: 본문 2~4줄 + 마지막 줄에 해시태그 정확히 7개(제주·봉도니·삼겹살 감성, # 포함, 공백 구분).
+반드시 아래 형식 그대로만 출력하세요. 제목·설명·번호목록 절대 쓰지 마세요.
+
+###1###
+(캡션 본문)
+(해시태그 7개)
+###2###
+(캡션 본문)
+(해시태그 7개)
+###3###
+(캡션 본문)
+(해시태그 7개)`;
+
+  const personas = ['젊은 사장님', '씩씩한 사장님', '유머 사장님'];
 
   try {
     const res = await claudeAPI(prompt, state.snsPhoto);
-    const items = parseNumberedList(res);
+    let items = res.split(/###\s*\d+\s*###/).slice(1).map(s => s.trim()).filter(Boolean);
+    if (items.length < 2) items = parseNumberedList(res); // 형식 안 지켰을 때 폴백
     if (!items.length) throw new Error('캡션 생성에 실패했습니다. 다시 시도해주세요.');
     resultsEl.innerHTML = items.slice(0, 3).map((text, i) => `
       <div class="ai-result-item">
         <div class="ai-result-header">
-          <div class="result-num">캡션 ${i + 1}</div>
+          <div class="result-num">캡션 ${i + 1}${personas[i] ? ' · ' + personas[i] : ''}</div>
           <button class="copy-btn" onclick="copyText(this, \`${text.replace(/`/g,'\\`').replace(/\$/g,'\\$')}\`)">복사</button>
         </div>
         <div class="result-text" style="white-space:pre-wrap">${escapeHtml(text)}</div>
@@ -674,7 +688,7 @@ function normalizeReservationDate(value) {
   if (lowered === '오늘') return formatDate(today, 'YYYY-MM-DD');
   if (lowered === '내일') return formatDate(new Date(today.getTime() + 86400000), 'YYYY-MM-DD');
 
-  if (/^\d{4,6}(\.\d+)?$/.test(lowered)) {
+  if (/^\d{5}$/.test(lowered)) {
     return googleSerialDateToKey(Number(lowered));
   }
 
@@ -694,7 +708,7 @@ function normalizeReservationDate(value) {
 
 function formatReservationDate(value) {
   const raw = String(value || '').trim();
-  if (/^\d{4,6}(\.\d+)?$/.test(raw)) {
+  if (/^\d{5}$/.test(raw)) {
     const date = googleSerialDateToDate(Number(raw));
     return `${date.getMonth() + 1}월 ${date.getDate()}일`;
   }
@@ -775,12 +789,11 @@ function isLikelyPeople(value) {
 function normalizePeopleText(value) {
   const raw = String(value || '').trim();
   const match = raw.match(/^(\d{1,2})\s*명?$/);
-  return match ? String(Number(match[1])) : raw;
+  return match ? `${Number(match[1])}명` : raw;
 }
 
 function formatPeople(value) {
-  const normalized = normalizePeopleText(value);
-  return /^\d{1,2}$/.test(normalized) ? `${normalized}명` : normalized;
+  return normalizePeopleText(value);
 }
 
 function formatDate(date, fmt) {
