@@ -146,6 +146,7 @@ html, body {
 .tab-item.active { color: var(--gold-dark); }
 .tab-item.active::before { transform: scaleX(1); }
 .tab-icon { font-size: 21px; line-height:1; }
+.tab-icon svg { width:22px; height:22px; display:block; }
 
 /* ── TODAY BANNER ── */
 .today-banner {
@@ -216,7 +217,12 @@ html, body {
   background:linear-gradient(135deg, var(--gold4), var(--gold3));
   display:flex; align-items:center; justify-content:center;
   font-size:18px; margin-bottom:10px;
+  color:var(--gold-dark);
 }
+.sc-icon svg { width:18px; height:18px; }
+.qi svg { width:20px; height:20px; }
+.spark { display:flex; align-items:flex-end; gap:3px; height:22px; margin-top:9px; }
+.spark i { flex:1; min-height:8%; background:linear-gradient(180deg, var(--gold2), var(--gold)); border-radius:2px; opacity:.85; }
 .sc-num { font-size:30px; font-weight:900; color:var(--text); line-height:1; letter-spacing:-1px; }
 .sc-lbl { font-size:11px; color:var(--text3); margin-top:5px; font-weight:600; }
 

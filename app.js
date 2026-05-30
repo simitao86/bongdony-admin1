@@ -121,6 +121,20 @@ function startReservationAutoRefresh() {
 }
 
 // ── HOME ──────────────────────────────────────────────────
+function sparkBars(items, getDate) {
+  const days = 7;
+  const counts = new Array(days).fill(0);
+  const base = new Date(); base.setHours(0, 0, 0, 0);
+  items.forEach(it => {
+    const raw = getDate(it); if (raw == null) return;
+    const d = new Date(raw); if (isNaN(d)) return; d.setHours(0, 0, 0, 0);
+    const diff = Math.round((base - d) / 86400000);
+    if (diff >= 0 && diff < days) counts[days - 1 - diff]++;
+  });
+  const max = Math.max(...counts, 1);
+  return counts.map(c => `<i style="height:${c ? Math.max(c / max * 100, 14) : 8}%"></i>`).join('');
+}
+
 function renderHome() {
   const today = formatDate(new Date(), 'YYYY-MM-DD');
   const todayRes = state.reservations.filter(r => r.dateKey === today);
@@ -128,6 +142,11 @@ function renderHome() {
   const totalEl = document.getElementById('home-total');
   if (el) el.textContent = todayRes.length;
   if (totalEl) totalEl.textContent = state.reservations.length;
+
+  const sr = document.getElementById('spark-res');
+  if (sr) sr.innerHTML = sparkBars(state.reservations, r => r.dateKey || r.date);
+  const srv = document.getElementById('spark-rev');
+  if (srv) srv.innerHTML = sparkBars(getReviewLogs(), r => r.ts);
 
   renderNextReservation(todayRes);
 
