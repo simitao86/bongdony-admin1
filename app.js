@@ -118,7 +118,7 @@ function renderHome() {
         <span class="res-name">${escapeHtml(r.name)}</span>
         <span class="res-badge complete">${escapeHtml(r.status || '예약완료')}</span>
       </div>
-      <div class="res-detail">🕐 ${escapeHtml(r.time)} &nbsp;·&nbsp; 👥 ${escapeHtml(r.people)}명 &nbsp;·&nbsp; 📞 ${escapeHtml(r.phone)}</div>
+      <div class="res-detail">🕐 ${escapeHtml(r.time)} &nbsp;·&nbsp; 👥 ${escapeHtml(formatPeople(r.people))} &nbsp;·&nbsp; 📞 ${escapeHtml(r.phone)}</div>
     </div>
   `).join('');
 }
@@ -161,7 +161,7 @@ function renderNextReservation(todayRes) {
       </div>
       <div class="next-res-footer">
         <span class="next-res-time">🕐 ${escapeHtml(next.time)}</span>
-        <span class="next-res-people">👥 ${escapeHtml(next.people)}명</span>
+        <span class="next-res-people">👥 ${escapeHtml(formatPeople(next.people))}</span>
       </div>
     </div>`;
 
@@ -337,7 +337,7 @@ async function loadReservations() {
       const contact = normalizeReservationContact(cols[3], cols[4], cols[5]);
       return {
         id:      cols[0] || '',
-        date:    (cols[1] || '').trim(),
+        date:    formatReservationDate(cols[1] || ''),
         dateKey: normalizeReservationDate(cols[1] || ''),
         time:    (cols[2] || '').trim(),
         timeMinutes: parseReservationTime(cols[2] || ''),
@@ -404,7 +404,7 @@ function renderReservations() {
       </div>
       <div class="res-detail">
         📅 ${escapeHtml(r.date)} &nbsp;·&nbsp; 🕐 ${escapeHtml(r.time)}<br>
-        👥 ${escapeHtml(r.people)}명 &nbsp;·&nbsp; 📞 ${escapeHtml(r.phone)}
+        👥 ${escapeHtml(formatPeople(r.people))} &nbsp;·&nbsp; 📞 ${escapeHtml(r.phone)}
         ${r.request && r.request !== '없음' ? `<br>📝 ${escapeHtml(r.request)}` : ''}
       </div>
     </div>`;
@@ -670,6 +670,10 @@ function normalizeReservationDate(value) {
   if (lowered === '오늘') return formatDate(today, 'YYYY-MM-DD');
   if (lowered === '내일') return formatDate(new Date(today.getTime() + 86400000), 'YYYY-MM-DD');
 
+  if (/^\d{5}$/.test(lowered)) {
+    return googleSerialDateToKey(Number(lowered));
+  }
+
   let match = raw.match(/(20\d{2})[-./년\s]+(\d{1,2})[-./월\s]+(\d{1,2})/);
   if (match) return toDateKey(Number(match[1]), Number(match[2]), Number(match[3]));
 
@@ -682,6 +686,24 @@ function normalizeReservationDate(value) {
   }
 
   return raw;
+}
+
+function formatReservationDate(value) {
+  const raw = String(value || '').trim();
+  if (/^\d{5}$/.test(raw)) {
+    const date = googleSerialDateToDate(Number(raw));
+    return `${date.getMonth() + 1}월 ${date.getDate()}일`;
+  }
+  return raw;
+}
+
+function googleSerialDateToKey(serial) {
+  return formatDate(googleSerialDateToDate(serial), 'YYYY-MM-DD');
+}
+
+function googleSerialDateToDate(serial) {
+  // Google Sheets date serial 1 is 1899-12-31.
+  return new Date(Date.UTC(1899, 11, 30 + serial));
 }
 
 function inferReservationYear(month, day) {
@@ -750,6 +772,10 @@ function normalizePeopleText(value) {
   const raw = String(value || '').trim();
   const match = raw.match(/^(\d{1,2})\s*명?$/);
   return match ? `${Number(match[1])}명` : raw;
+}
+
+function formatPeople(value) {
+  return normalizePeopleText(value);
 }
 
 function formatDate(date, fmt) {
