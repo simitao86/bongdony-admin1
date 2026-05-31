@@ -1417,3 +1417,30 @@ function deletePlEntry(id) {
   renderPl();
   showToast('삭제됐습니다');
 }
+
+// ── 강제 앱 업데이트 (캐시 초기화 + 새로고침) ──────────────
+async function forceAppRefresh() {
+  const btn = document.getElementById('refresh-btn');
+  // 버튼 스피너 애니메이션
+  if (btn) {
+    btn.style.animation = 'spin .6s linear infinite';
+    btn.style.pointerEvents = 'none';
+  }
+  showToast('최신 버전으로 업데이트 중...');
+
+  try {
+    // 1. 서비스워커 전체 해제
+    if ('serviceWorker' in navigator) {
+      const regs = await navigator.serviceWorker.getRegistrations();
+      await Promise.all(regs.map(r => r.unregister()));
+    }
+    // 2. 캐시 전체 삭제
+    if ('caches' in window) {
+      const names = await caches.keys();
+      await Promise.all(names.map(n => caches.delete(n)));
+    }
+  } catch(e) {}
+
+  // 3. 강제 새로고침 (캐시 무시)
+  location.reload();
+}
