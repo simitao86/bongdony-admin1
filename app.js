@@ -1129,8 +1129,7 @@ async function renderInventory() {
       </div>`;
     });
   });
-  const listEl = document.getElementById('inv-item-list');
-  if (listEl) listEl.innerHTML = html;
+  if (listEl) listEl.innerHTML = html; // listEl은 함수 상단에서 이미 선언됨
   renderHomeInvWidget();
 }
 
