@@ -41,6 +41,8 @@ document.addEventListener('DOMContentLoaded', () => {
   checkInstaReminder();
   setInterval(checkInstaReminder, 60000); // 매 분 체크 → 오후 5시 정각에 표시
   initOneSignal();
+  renderHomeInvWidget();
+  renderHomePlMini();
 });
 
 // ── 인스타 게시 알림 배너 ────────────────────────────────
@@ -109,7 +111,9 @@ function switchTab(tab) {
   );
   if (tab === 'reservations') renderReservations();
   if (tab === 'crm') renderCRM();
-  if (tab === 'home') renderHome();
+  if (tab === 'home') { renderHome(); renderHomeInvWidget(); renderHomePlMini(); }
+  if (tab === 'inventory') renderInventory();
+  if (tab === 'pl') renderPl();
 }
 
 function startReservationAutoRefresh() {
@@ -982,4 +986,374 @@ async function togglePushNotifications() {
   } catch(e) {
     showToast('알림 설정 중 오류가 발생했습니다');
   }
+}
+
+// ══════════════════════════════════════════════════════
+// 📦 재고 관리
+// ══════════════════════════════════════════════════════
+const INV_DEFAULT = [
+  {id:'m1',cat:'meat',name:'삼겹살',stock:15,minStock:5,unit:'kg',ordered:false},
+  {id:'m2',cat:'meat',name:'오겹살',stock:10,minStock:3,unit:'kg',ordered:false},
+  {id:'m3',cat:'meat',name:'생갈비',stock:8,minStock:3,unit:'kg',ordered:false},
+  {id:'m4',cat:'meat',name:'항정살',stock:8,minStock:3,unit:'kg',ordered:false},
+  {id:'m5',cat:'meat',name:'목살',stock:10,minStock:3,unit:'kg',ordered:false},
+  {id:'v1',cat:'veg',name:'상추',stock:10,minStock:5,unit:'봉',ordered:false},
+  {id:'v2',cat:'veg',name:'깻잎',stock:8,minStock:4,unit:'봉',ordered:false},
+  {id:'v3',cat:'veg',name:'쑥갓',stock:6,minStock:3,unit:'봉',ordered:false},
+  {id:'v4',cat:'veg',name:'마늘',stock:5,minStock:2,unit:'망',ordered:false},
+  {id:'v5',cat:'veg',name:'양파',stock:8,minStock:3,unit:'망',ordered:false},
+  {id:'v6',cat:'veg',name:'대파',stock:5,minStock:2,unit:'단',ordered:false},
+  {id:'v7',cat:'veg',name:'새송이버섯',stock:8,minStock:3,unit:'봉',ordered:false},
+  {id:'v8',cat:'veg',name:'쌈장',stock:3,minStock:1,unit:'통',ordered:false},
+  {id:'d1',cat:'drink',name:'소주',stock:5,minStock:2,unit:'박스',ordered:false},
+  {id:'d2',cat:'drink',name:'맥주',stock:5,minStock:2,unit:'박스',ordered:false},
+  {id:'d3',cat:'drink',name:'막걸리',stock:20,minStock:5,unit:'병',ordered:false},
+  {id:'d4',cat:'drink',name:'콜라',stock:20,minStock:5,unit:'병',ordered:false},
+  {id:'d5',cat:'drink',name:'사이다',stock:20,minStock:5,unit:'병',ordered:false},
+  {id:'d6',cat:'drink',name:'생수',stock:3,minStock:1,unit:'박스',ordered:false},
+  {id:'e1',cat:'etc',name:'쌀',stock:20,minStock:5,unit:'kg',ordered:false},
+  {id:'e2',cat:'etc',name:'기름',stock:3,minStock:1,unit:'통',ordered:false},
+  {id:'e3',cat:'etc',name:'된장',stock:2,minStock:1,unit:'통',ordered:false},
+  {id:'e4',cat:'etc',name:'두부',stock:10,minStock:3,unit:'모',ordered:false},
+  {id:'e5',cat:'etc',name:'계란',stock:3,minStock:1,unit:'판',ordered:false},
+];
+
+let invItems = JSON.parse(localStorage.getItem('inv_items') || 'null') || INV_DEFAULT.map(i => ({...i}));
+let invCatFilter = 'all';
+
+function saveInvItems() { localStorage.setItem('inv_items', JSON.stringify(invItems)); }
+
+function getInvStatus(item) {
+  const r = item.stock / item.minStock;
+  if (r >= 2)   return 'ok';
+  if (r >= 1)   return 'yellow';
+  if (r >= 0.5) return 'orange';
+  return 'red';
+}
+const INV_STATUS_LABEL = {red:'긴급', orange:'부족', yellow:'주의', ok:'충분'};
+const INV_STATUS_EMOJI = {red:'🔴', orange:'🟠', yellow:'🟡', ok:'✅'};
+
+function renderInventory() {
+  const catNames = {meat:'🥩 고기류', veg:'🥬 채소·쌈', drink:'🍺 음료', etc:'📦 기타'};
+  const groups = invCatFilter === 'all' ? ['meat','veg','drink','etc'] : [invCatFilter];
+  const alertItems = invItems.filter(i => getInvStatus(i) !== 'ok');
+
+  // 알림 바
+  const alertBar = document.getElementById('inv-alert-bar');
+  if (alertBar) {
+    alertBar.classList.remove('hidden', 'ok-state');
+    if (alertItems.length > 0) {
+      alertBar.textContent = `⚠️ 발주 필요 ${alertItems.length}개 항목이 있습니다`;
+    } else {
+      alertBar.textContent = '✅ 모든 재료 재고가 충분합니다';
+      alertBar.classList.add('ok-state');
+    }
+  }
+
+  // 아이템 목록
+  let html = '';
+  groups.forEach(cat => {
+    const items = invItems.filter(i => i.cat === cat);
+    if (!items.length) return;
+    html += `<div class="inv-group-label">${catNames[cat]}</div>`;
+    items.forEach(item => {
+      const st = getInvStatus(item);
+      const pct = Math.min(100, Math.round(item.stock / (item.minStock * 2) * 100));
+      const orderClass = item.ordered ? 'ordered' : (st !== 'ok' ? 'needs-order' : '');
+      const orderText = item.ordered ? '✅발주완료' : '발주';
+      html += `<div class="inv-item status-${st}" id="inv-${item.id}">
+        <div class="inv-status-badge" id="ibadge-${item.id}">${INV_STATUS_EMOJI[st]}</div>
+        <div style="flex:1;min-width:0">
+          <div class="inv-name">${item.name}</div>
+          <div class="inv-bar-wrap"><div class="inv-bar bar-${st}" id="ibar-${item.id}" style="width:${pct}%"></div></div>
+        </div>
+        <div class="inv-qty-area">
+          <button class="inv-qty-btn" onclick="adjInv('${item.id}',-1)">−</button>
+          <div class="inv-qty-display">
+            <div class="inv-qty-num" id="iqn-${item.id}">${item.stock}</div>
+            <div class="inv-qty-unit">${item.unit}</div>
+          </div>
+          <button class="inv-qty-btn" onclick="adjInv('${item.id}',1)">+</button>
+        </div>
+        <button class="inv-order-btn ${orderClass}" id="iobtn-${item.id}" onclick="toggleInvOrder('${item.id}')">${orderText}</button>
+      </div>`;
+    });
+  });
+  const listEl = document.getElementById('inv-item-list');
+  if (listEl) listEl.innerHTML = html;
+  renderHomeInvWidget();
+}
+
+function adjInv(id, delta) {
+  const item = invItems.find(i => i.id === id);
+  if (!item) return;
+  item.stock = Math.max(0, item.stock + delta);
+  saveInvItems();
+
+  // 해당 아이템만 DOM 업데이트 (전체 재렌더링 없이)
+  const st = getInvStatus(item);
+  const pct = Math.min(100, Math.round(item.stock / (item.minStock * 2) * 100));
+  const numEl = document.getElementById(`iqn-${id}`);
+  if (numEl) numEl.textContent = item.stock;
+  const el = document.getElementById(`inv-${id}`);
+  if (el) el.className = `inv-item status-${st}`;
+  const badge = document.getElementById(`ibadge-${id}`);
+  if (badge) badge.textContent = INV_STATUS_EMOJI[st];
+  const bar = document.getElementById(`ibar-${id}`);
+  if (bar) { bar.style.width = pct + '%'; bar.className = `inv-bar bar-${st}`; }
+  const oBtn = document.getElementById(`iobtn-${id}`);
+  if (oBtn) {
+    oBtn.className = `inv-order-btn ${item.ordered ? 'ordered' : (st !== 'ok' ? 'needs-order' : '')}`;
+  }
+
+  // 알림 바 업데이트
+  const alertItems = invItems.filter(i => getInvStatus(i) !== 'ok');
+  const alertBar = document.getElementById('inv-alert-bar');
+  if (alertBar) {
+    alertBar.classList.remove('hidden', 'ok-state');
+    if (alertItems.length > 0) {
+      alertBar.textContent = `⚠️ 발주 필요 ${alertItems.length}개 항목이 있습니다`;
+    } else {
+      alertBar.textContent = '✅ 모든 재료 재고가 충분합니다';
+      alertBar.classList.add('ok-state');
+    }
+  }
+  renderHomeInvWidget();
+}
+
+function toggleInvOrder(id) {
+  const item = invItems.find(i => i.id === id);
+  if (!item) return;
+  item.ordered = !item.ordered;
+  saveInvItems();
+  renderInventory();
+  renderOrderList();
+  showToast(item.ordered ? `${item.name} 발주 완료 처리` : `${item.name} 발주 취소`);
+}
+
+function filterInv(el, cat) {
+  document.querySelectorAll('.cat-pill').forEach(p => p.classList.remove('active'));
+  el.classList.add('active');
+  invCatFilter = cat;
+  renderInventory();
+}
+
+function openOrderListModal() {
+  renderOrderList();
+  document.getElementById('order-modal').classList.add('open');
+}
+function closeOrderModal() { document.getElementById('order-modal').classList.remove('open'); }
+
+function renderOrderList() {
+  const items = invItems.filter(i => getInvStatus(i) !== 'ok');
+  const el = document.getElementById('order-modal-list');
+  if (!el) return;
+  if (!items.length) {
+    el.innerHTML = '<div class="empty"><span class="ei">✅</span>발주 필요 항목이 없습니다</div>';
+    return;
+  }
+  el.innerHTML = items.map(item => {
+    const st = getInvStatus(item);
+    return `<div style="display:flex;align-items:center;gap:8px;padding:10px 0;border-bottom:1px solid var(--cream2)">
+      <span>${INV_STATUS_EMOJI[st]}</span>
+      <span style="flex:1;font-size:14px;font-weight:800">${item.name}</span>
+      <span style="font-size:12px;color:var(--text3)">${item.stock}${item.unit} 남음</span>
+      <span class="hiw-tag ${st}">${INV_STATUS_LABEL[st]}</span>
+      <button class="inv-order-btn ${item.ordered ? 'ordered' : 'needs-order'}"
+        onclick="toggleInvOrder('${item.id}')">${item.ordered ? '✅완료' : '발주필요'}</button>
+    </div>`;
+  }).join('');
+}
+
+function renderHomeInvWidget() {
+  const widget = document.getElementById('home-inv-widget');
+  const listEl = document.getElementById('home-inv-list');
+  if (!widget || !listEl) return;
+  const alertItems = invItems
+    .filter(i => getInvStatus(i) !== 'ok')
+    .sort((a, b) => {
+      const o = {red:0, orange:1, yellow:2, ok:3};
+      return o[getInvStatus(a)] - o[getInvStatus(b)];
+    })
+    .slice(0, 5);
+  if (!alertItems.length) { widget.style.display = 'none'; return; }
+  widget.style.display = 'block';
+  listEl.innerHTML = alertItems.map(item => {
+    const st = getInvStatus(item);
+    return `<div class="hiw-row">
+      <div class="hiw-dot ${st}"></div>
+      <div class="hiw-iname">${item.name}</div>
+      <div class="hiw-qty ${st}">${item.stock} ${item.unit}</div>
+      <span class="hiw-tag ${st}">${INV_STATUS_LABEL[st]}</span>
+    </div>`;
+  }).join('');
+}
+
+// ══════════════════════════════════════════════════════
+// 💰 손익계산서
+// ══════════════════════════════════════════════════════
+let plLogs = JSON.parse(localStorage.getItem('pl_logs') || '[]');
+let plCurrentMonth = (() => {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2,'0')}`;
+})();
+
+function savePlLogs() { localStorage.setItem('pl_logs', JSON.stringify(plLogs)); }
+
+function fmtWon(n) {
+  const abs = Math.abs(n);
+  if (abs >= 100000000) return (n / 100000000).toFixed(1) + '억원';
+  if (abs >= 10000) return (n / 10000).toFixed(0) + '만원';
+  return n.toLocaleString() + '원';
+}
+
+function getMonthLabel(ym) {
+  const [y, m] = ym.split('-');
+  return `${y}년 ${parseInt(m)}월`;
+}
+
+function changeMonth(delta) {
+  const [y, m] = plCurrentMonth.split('-').map(Number);
+  const d = new Date(y, m - 1 + delta, 1);
+  plCurrentMonth = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+  renderPl();
+}
+
+function renderPl() {
+  const labelEl = document.getElementById('pl-month-label');
+  if (labelEl) labelEl.textContent = getMonthLabel(plCurrentMonth);
+
+  const entries = plLogs.filter(e => e.date && e.date.startsWith(plCurrentMonth));
+  const totalIncome  = entries.reduce((s, e) => s + (e.income  || 0), 0);
+  const totalExpense = entries.reduce((s, e) => s + (e.expense || 0), 0);
+  const profit = totalIncome - totalExpense;
+
+  const incEl = document.getElementById('pl-income-val');
+  const expEl = document.getElementById('pl-expense-val');
+  const prfEl = document.getElementById('pl-profit-val');
+  if (incEl) incEl.textContent = fmtWon(totalIncome);
+  if (expEl) expEl.textContent = fmtWon(totalExpense);
+  if (prfEl) prfEl.textContent = (profit >= 0 ? '+' : '') + fmtWon(profit);
+
+  renderPlChart();
+  renderPlEntries(entries);
+  renderHomePlMini();
+}
+
+function renderPlChart() {
+  const chartEl = document.getElementById('pl-chart-area');
+  if (!chartEl) return;
+  const months = [];
+  const [cy, cm] = plCurrentMonth.split('-').map(Number);
+  for (let i = 5; i >= 0; i--) {
+    const d = new Date(cy, cm - 1 - i, 1);
+    const ym = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+    const ents = plLogs.filter(e => e.date && e.date.startsWith(ym));
+    months.push({
+      label: String(d.getMonth() + 1) + '월',
+      income:  ents.reduce((s, e) => s + (e.income  || 0), 0),
+      expense: ents.reduce((s, e) => s + (e.expense || 0), 0),
+    });
+  }
+  const maxVal = Math.max(...months.map(m => m.income), 1);
+  chartEl.innerHTML = months.map(m => {
+    const ih = Math.round(m.income  / maxVal * 74);
+    const eh = Math.round(m.expense / maxVal * 74);
+    const ph = Math.max(Math.round((m.income - m.expense) / maxVal * 74), 0);
+    return `<div class="pl-chart-col">
+      <div class="pl-chart-bars">
+        <div class="pl-chart-bar pl-bar-income"  style="height:${Math.max(ih,3)}px;width:9px"></div>
+        <div class="pl-chart-bar pl-bar-expense" style="height:${Math.max(eh,3)}px;width:9px"></div>
+        <div class="pl-chart-bar pl-bar-profit"  style="height:${Math.max(ph,3)}px;width:6px"></div>
+      </div>
+      <div class="pl-chart-label">${m.label}</div>
+    </div>`;
+  }).join('');
+}
+
+function renderPlEntries(entries) {
+  const listEl = document.getElementById('pl-entries-list');
+  if (!listEl) return;
+  const sorted = entries.slice().sort((a, b) => b.date.localeCompare(a.date));
+  if (!sorted.length) {
+    listEl.innerHTML = '<div class="empty"><span class="ei">📋</span>이번달 입력 내역이 없습니다<br>아래 버튼으로 오늘 수입·지출을 입력해보세요</div>';
+    return;
+  }
+  listEl.innerHTML = sorted.map(e => {
+    const profit = (e.income || 0) - (e.expense || 0);
+    const d = e.date.slice(5).replace('-', '/');
+    return `<div class="pl-entry-item">
+      <div class="ple-date">${d}</div>
+      <div class="ple-memo">${escapeHtml(e.memo || '메모 없음')}</div>
+      <div class="ple-amounts">
+        <div class="ple-income">${(e.income||0).toLocaleString()}원</div>
+        <div class="ple-expense">−${(e.expense||0).toLocaleString()}원</div>
+      </div>
+      <div class="ple-profit-badge ${profit >= 0 ? 'pos' : 'neg'}">${profit >= 0 ? '+' : ''}${fmtWon(profit)}</div>
+      <button class="ple-del-btn" onclick="deletePlEntry('${e.id}')">✕</button>
+    </div>`;
+  }).join('');
+}
+
+function renderHomePlMini() {
+  const el = document.getElementById('home-pl-mini');
+  if (!el) return;
+  const now = new Date();
+  const ym = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
+  const entries = plLogs.filter(e => e.date && e.date.startsWith(ym));
+  if (!entries.length) { el.style.display = 'none'; return; }
+  el.style.display = 'flex';
+  const totalIncome  = entries.reduce((s, e) => s + (e.income  || 0), 0);
+  const totalExpense = entries.reduce((s, e) => s + (e.expense || 0), 0);
+  const profit = totalIncome - totalExpense;
+  const valEl = document.getElementById('home-pl-val');
+  if (valEl) valEl.textContent = (profit >= 0 ? '+' : '') + fmtWon(profit);
+  const pctEl = document.getElementById('home-pl-pct');
+  if (pctEl) {
+    const prevDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    const prevYm = `${prevDate.getFullYear()}-${String(prevDate.getMonth()+1).padStart(2,'0')}`;
+    const prevEnts = plLogs.filter(e => e.date && e.date.startsWith(prevYm));
+    const prevProfit = prevEnts.reduce((s, e) => s + (e.income||0) - (e.expense||0), 0);
+    if (prevProfit !== 0) {
+      const pct = Math.round((profit - prevProfit) / Math.abs(prevProfit) * 100);
+      pctEl.textContent = (pct >= 0 ? '▲ ' : '▼ ') + Math.abs(pct) + '% 전월 대비';
+      pctEl.className = 'hpm-profit-pct ' + (pct >= 0 ? 'pos' : 'neg');
+    } else {
+      pctEl.textContent = `${entries.length}일 입력됨`;
+      pctEl.className = 'hpm-profit-pct pos';
+    }
+  }
+}
+
+function openPlModal() {
+  const today = new Date();
+  const dateStr = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-${String(today.getDate()).padStart(2,'0')}`;
+  document.getElementById('pl-input-date').value = dateStr;
+  document.getElementById('pl-input-income').value = '';
+  document.getElementById('pl-input-expense').value = '';
+  document.getElementById('pl-input-memo').value = '';
+  document.getElementById('pl-modal').classList.add('open');
+}
+function closePlModal() { document.getElementById('pl-modal').classList.remove('open'); }
+
+function savePlEntry() {
+  const date    = document.getElementById('pl-input-date').value;
+  const income  = parseInt(document.getElementById('pl-input-income').value)  || 0;
+  const expense = parseInt(document.getElementById('pl-input-expense').value) || 0;
+  const memo    = document.getElementById('pl-input-memo').value.trim();
+  if (!date) { showToast('날짜를 입력해주세요'); return; }
+  if (!income && !expense) { showToast('매출 또는 지출을 입력해주세요'); return; }
+  plLogs = plLogs.filter(e => e.date !== date); // 같은 날짜 중복 제거
+  plLogs.push({ id: date + '_' + Date.now(), date, income, expense, memo });
+  savePlLogs();
+  closePlModal();
+  renderPl();
+  showToast('저장됐습니다 ✅');
+}
+
+function deletePlEntry(id) {
+  plLogs = plLogs.filter(e => e.id !== id);
+  savePlLogs();
+  renderPl();
+  showToast('삭제됐습니다');
 }
