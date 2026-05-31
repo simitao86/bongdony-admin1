@@ -1055,7 +1055,9 @@ async function loadFromSheet(sheetName) {
 function saveInvItems() {
   localStorage.setItem('inv_items', JSON.stringify(invItems));
   clearTimeout(_invSyncTimer);
-  _invSyncTimer = setTimeout(() => syncToSheet('inv', invItems), 2000); // 2초 디바운스
+  // 시트에는 변하는 값(id, stock, ordered)만 저장 → 한글 이름은 앱코드 INV_DEFAULT에서 항상 가져옴
+  const mutable = invItems.map(({id, stock, ordered}) => ({id, stock, ordered}));
+  _invSyncTimer = setTimeout(() => syncToSheet('inv', mutable), 2000);
 }
 
 function getInvStatus(item) {
@@ -1073,8 +1075,12 @@ async function renderInventory() {
   const listEl = document.getElementById('inv-item-list');
   if (listEl) listEl.innerHTML = '<div class="loading"><div class="spinner"></div>시트에서 불러오는 중...</div>';
   const sheetData = await loadFromSheet('재고');
-  if (sheetData && Array.isArray(sheetData)) {
-    invItems = sheetData;
+  if (sheetData && Array.isArray(sheetData) && sheetData.length > 0) {
+    // INV_DEFAULT(이름·단위 포함)와 시트데이터(id·stock·ordered)를 병합
+    invItems = INV_DEFAULT.map(def => {
+      const s = sheetData.find(x => x.id === def.id);
+      return s ? {...def, stock: s.stock ?? def.stock, ordered: s.ordered ?? false} : {...def};
+    });
     localStorage.setItem('inv_items', JSON.stringify(invItems));
   }
 
