@@ -6,6 +6,7 @@ const CONFIG = {
   instagramId: 'bongdony_jeju',
   reservationRefreshMs: 30000,
   oneSignalAppId: '239d5b75-6ff7-4f7b-b05c-e9885841c10c',
+  syncWebhookUrl: 'https://hook.us2.make.com/n2td26rk2eeq3lhqdvlwnt6yxmrlv331',
 };
 
 // ── STATE ─────────────────────────────────────────────────
@@ -1021,7 +1022,41 @@ const INV_DEFAULT = [
 let invItems = JSON.parse(localStorage.getItem('inv_items') || 'null') || INV_DEFAULT.map(i => ({...i}));
 let invCatFilter = 'all';
 
-function saveInvItems() { localStorage.setItem('inv_items', JSON.stringify(invItems)); }
+// ── 구글 시트 동기화 공통 ──────────────────────────────────
+let _invSyncTimer = null;
+let _plSyncTimer  = null;
+
+function syncToSheet(type, data) {
+  fetch(CONFIG.syncWebhookUrl, {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({type, data: JSON.stringify(data)})
+  }).catch(() => {});
+}
+
+async function loadFromSheet(sheetName) {
+  try {
+    const url = `https://docs.google.com/spreadsheets/d/${CONFIG.sheetId}/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent(sheetName)}`;
+    const resp = await fetch(url + '&t=' + Date.now()); // 캐시 무효화
+    if (!resp.ok) return null;
+    const text = await resp.text();
+    const rows = text.trim().split('\n').filter(r => r.trim()).map(r => parseCSVRow(r));
+    // 마지막 행부터 역순으로 유효한 JSON 배열 찾기
+    for (let i = rows.length - 1; i >= 0; i--) {
+      const col = rows[i][1];
+      if (col && col.trim().startsWith('[')) {
+        return JSON.parse(col.trim());
+      }
+    }
+    return null;
+  } catch(e) { return null; }
+}
+
+function saveInvItems() {
+  localStorage.setItem('inv_items', JSON.stringify(invItems));
+  clearTimeout(_invSyncTimer);
+  _invSyncTimer = setTimeout(() => syncToSheet('inv', invItems), 2000); // 2초 디바운스
+}
 
 function getInvStatus(item) {
   const r = item.stock / item.minStock;
@@ -1033,7 +1068,16 @@ function getInvStatus(item) {
 const INV_STATUS_LABEL = {red:'긴급', orange:'부족', yellow:'주의', ok:'충분'};
 const INV_STATUS_EMOJI = {red:'🔴', orange:'🟠', yellow:'🟡', ok:'✅'};
 
-function renderInventory() {
+async function renderInventory() {
+  // 구글 시트에서 최신 데이터 로드
+  const listEl = document.getElementById('inv-item-list');
+  if (listEl) listEl.innerHTML = '<div class="loading"><div class="spinner"></div>시트에서 불러오는 중...</div>';
+  const sheetData = await loadFromSheet('재고');
+  if (sheetData && Array.isArray(sheetData)) {
+    invItems = sheetData;
+    localStorage.setItem('inv_items', JSON.stringify(invItems));
+  }
+
   const catNames = {meat:'🥩 고기류', veg:'🥬 채소·쌈', drink:'🍺 음료', etc:'📦 기타'};
   const groups = invCatFilter === 'all' ? ['meat','veg','drink','etc'] : [invCatFilter];
   const alertItems = invItems.filter(i => getInvStatus(i) !== 'ok');
@@ -1198,7 +1242,11 @@ let plCurrentMonth = (() => {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2,'0')}`;
 })();
 
-function savePlLogs() { localStorage.setItem('pl_logs', JSON.stringify(plLogs)); }
+function savePlLogs() {
+  localStorage.setItem('pl_logs', JSON.stringify(plLogs));
+  clearTimeout(_plSyncTimer);
+  _plSyncTimer = setTimeout(() => syncToSheet('pl', plLogs), 1000); // 1초 디바운스
+}
 
 function fmtWon(n) {
   const abs = Math.abs(n);
@@ -1216,10 +1264,17 @@ function changeMonth(delta) {
   const [y, m] = plCurrentMonth.split('-').map(Number);
   const d = new Date(y, m - 1 + delta, 1);
   plCurrentMonth = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
-  renderPl();
+  renderPl(); // async — 탭 전환 시 시트 재로드
 }
 
-function renderPl() {
+async function renderPl() {
+  // 구글 시트에서 최신 데이터 로드
+  const sheetData = await loadFromSheet('손익');
+  if (sheetData && Array.isArray(sheetData)) {
+    plLogs = sheetData;
+    localStorage.setItem('pl_logs', JSON.stringify(plLogs));
+  }
+
   const labelEl = document.getElementById('pl-month-label');
   if (labelEl) labelEl.textContent = getMonthLabel(plCurrentMonth);
 
