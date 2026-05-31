@@ -1420,27 +1420,32 @@ function deletePlEntry(id) {
 
 // ── 강제 앱 업데이트 (캐시 초기화 + 새로고침) ──────────────
 async function forceAppRefresh() {
-  const btn = document.getElementById('refresh-btn');
-  // 버튼 스피너 애니메이션
-  if (btn) {
-    btn.style.animation = 'spin .6s linear infinite';
-    btn.style.pointerEvents = 'none';
-  }
-  showToast('최신 버전으로 업데이트 중...');
+  const btn  = document.getElementById('refresh-btn');
+  const icon = document.getElementById('refresh-icon');
+
+  // 1. 스피너 시작
+  if (btn)  btn.style.pointerEvents = 'none';
+  if (icon) icon.style.animation = 'spin .6s linear infinite';
 
   try {
-    // 1. 서비스워커 전체 해제
+    // 2. 서비스워커 전체 해제
     if ('serviceWorker' in navigator) {
       const regs = await navigator.serviceWorker.getRegistrations();
       await Promise.all(regs.map(r => r.unregister()));
     }
-    // 2. 캐시 전체 삭제
+    // 3. 캐시 전체 삭제
     if ('caches' in window) {
       const names = await caches.keys();
       await Promise.all(names.map(n => caches.delete(n)));
     }
   } catch(e) {}
 
-  // 3. 강제 새로고침 (캐시 무시)
-  location.reload();
+  // 4. 완료 표시 (체크) → 0.8초 후 새 URL로 강제 이동 (캐시 우회)
+  if (icon) { icon.style.animation = 'none'; }
+  if (btn)  { btn.innerHTML = '<span style="font-size:15px">✅</span>'; }
+
+  await new Promise(r => setTimeout(r, 800));
+
+  // 캐시 버스팅 파라미터로 강제 새로고침 (서비스워커 해제돼 있으므로 항상 네트워크 요청)
+  window.location.replace(location.pathname + '?v=' + Date.now());
 }
